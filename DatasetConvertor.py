@@ -136,7 +136,7 @@ def convertParkingData(*args, **kwargs):
         print("startIndex:"+str(startIndex)+" endIndex:"+str(endIndex))
         outputCSV_x = open(outputFile[:-4] + '_x' + outputFile[-4:],'w')
         outputCSV_y = open(outputFile[:-4] + '_y' + outputFile[-4:],'w')
-        outputCSV_x.write("id" + "".join([",t"+str(i) for i in range(1 - units, -1)])+"\n")
+        outputCSV_x.write("id" + "".join([",t"+str(i) for i in range(1 - units, 1)])+"\n")
         if isinstance(y_oneDaySerial,list):
             outputCSV_y.write("id" + "".join([",t"+str(i) for i in y_oneDaySerial])+"\n")
         else:
