@@ -78,7 +78,7 @@ def saveToFiles(convert,outputCSV,outputCSV_x,outputCSV_y,parkingSlotID,parkingE
         outputCSV.write(parkingSlotID+","+format(int(parkingEventsYearStr,2),"x")+"\n")
     elif convert == "extract": 
         if isinstance(y_oneDaySerial,list):
-            outputCSV_x.write(getSubParkingDataSet(parkingSlotID,parkingEventsYearStr,startIndex,endIndex,units+y_oneDaySerial[len(y_oneDaySerial) - 1]))
+            outputCSV_x.write(getSubParkingDataSet(parkingSlotID,parkingEventsYearStr,startIndex,endIndex - y_oneDaySerial[len(y_oneDaySerial) - 1],units))
             outputCSV_y.write(getSubParkingDataSerialSet(parkingSlotID,parkingEventsYearStr,startIndex+units,endIndex,y_oneDaySerial))
         else:
             outputCSV_x.write(getSubParkingDataSet(parkingSlotID,parkingEventsYearStr,startIndex,endIndex,units))
