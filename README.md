@@ -6,6 +6,8 @@ Parking slot prediction model for MParking project
 #### 1.DatasetConvertor.py
 Convert dataset from data collection team. The input file should be the parking slot occupancy status of a proid(e.g. 1 min or 5 min, ...), which is handled by Bruce.
 The dataset format:  
+
+
 | StreetMarker   | Day(MM/DD/YYYY)   | 00:01  | 00:02   | 00:03  | 00:..   |  
 | -------------- | ----------------- |------- | ------- | -------| ------- |  
 | SOO1           | 01/01/2017        | 1      | 1       | 0      | 1       |  
@@ -18,15 +20,21 @@ The output file could be train/test datasets in a special date range, or the who
 
 Convert to the dataset of the whole year occupancy status
 Output dataset format:  
+
+
 | id      | data(whole year parking occupancy state, default hex) |  
 | ------- | ------------------------------------------ |  
 | SOO1  | ff0ffa1ff0ffa1ff0ffa1ff0ffa1ff0ffa1...       |   
 | SOO2  | f000ffff000ffff000abbccf000ffff000fff....    |  
 | S00.. | f000ffff000ffff000ffff000ffff000ffff000....  |  
 
+
+
 The whole year occupancy status data use binrary to store each occupancy status, then convert to hex string to save in csv data, if use binrary file to save, the file size could be reduce a lot, from 4GB to 400MB. If the sample rate is 1 minute, each whole year occupancy status data of parking slot is around 64KB.
 
 Here is the training/test_x/y dataset structure:
+
+
 |  	|         	|         	|         	|training/test_x|    	| 	\| 	|    	|    	|      	|training/test_y |   
 | -----------------	| ---------	| ---------	| ---------	| -------	| ----	| ---	| -----------------	| ----	| ----	| ------	| ----	|   
 | Id              	| t-(n-1) 	| t-(n-2) 	| t-(n-3) 	| t-... 	| t0 	| \| 	| t1              	| t2 	| t3 	| t... 	| tX 	|   
@@ -34,7 +42,11 @@ Here is the training/test_x/y dataset structure:
 | SOO1            	| 1       	| 0       	| 0       	| 1     	| 1  	| \| 	| 1               	| 1  	| 1  	| 0    	| 0  	|   
 | SOO1            	| 0       	| 0       	| 0       	| 1     	| 0  	| \| 	| 1               	| 1  	| 0  	| 0    	| 1  	|   
 | SOO2            	| 0       	| 0       	| 0       	| 1     	| 0  	| \| 	| 1               	| 1  	| 0  	| 0    	| 1  	|   
+
+
 The training/test_y with t serial(Exponentially sparse) dataset:
+
+
 |                      | 0\-30 mins        | 31\-60 mins          | 61\-120 mins          | 121\-240 mins            | 241\-480 mins            | 481\-24\*60               |    
 | ---------------------- | ------------------- | ---------------------- | ----------------------- | -------------------------- | -------------------------- | --------------------------- |
 | Interval             | 1                 | 2                    | 4                     | 8                        | 16                       | 32                        |    
