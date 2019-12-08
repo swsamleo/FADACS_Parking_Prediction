@@ -38,8 +38,8 @@ def getSubParkingData(yearData,startIndex,endIndex,opt):
         return int("1"+yearData[startIndex:endIndex],2)
 
 
-def getSubParkingDataSerial(yearData,startIndex,inputSerial,opt):
-    rowArray = list(yearData)
+def getSubParkingDataSerial(rowArray,startIndex,inputSerial,opt):
+    #rowArray = list(yearData)
     serial = [x+startIndex for x in inputSerial]
     if opt == "str" :
         return "".join([rowArray[i] for i in serial])
@@ -68,8 +68,9 @@ def getSubParkingDataSerialSet(id,yearData,startIndex,endIndex,serial):
         return ""
     num = endIndex - startIndex - serial[len(serial) -1]
     res = ""
+    rowArray = list(yearData)
     for i in range(0, num):
-        res += id+","+(",".join(getSubParkingDataSerial(yearData,startIndex+i,serial,"arr")))+"\n"
+        res += id+","+(",".join(getSubParkingDataSerial(rowArray,startIndex+i,serial,"arr")))+"\n"
     return res
 
 
@@ -122,8 +123,9 @@ def convertParkingData(*args, **kwargs):
         startIndex = (arrow.get(startDay, DATE_FORMAT) - arrow.get(START_DATE_OF_YEAR, DATE_FORMAT)).days * 60 * 24 // interval
         endIndex = (arrow.get(endDay, DATE_FORMAT) - arrow.get(START_DATE_OF_YEAR, DATE_FORMAT)).days * 60 *24 // interval
 
-    print("checking line number of the input file ...")
-    count = len(open(parkingMinsDataFile).readlines())
+    print("skip checking line number of the input file ...")
+    #count = len(open(parkingMinsDataFile).readlines())
+    count = 1444516
     #print("file lines:"+str(count))
     outputCSV = open(outputFile,'w')
     outputCSV_x =  outputCSV
