@@ -20,6 +20,13 @@ from torch import nn
 import matplotlib.pyplot as plt
 from sklearn.externals import joblib
 
+from keras.models import *
+from keras.layers import *
+from keras.optimizers import *
+from keras.callbacks import ModelCheckpoint, LearningRateScheduler
+from keras import backend as K
+from keras.optimizers import SGD
+
 import _pickle as cPickle
 
 import cProfile
@@ -257,6 +264,103 @@ def lightGBMTest(data):
     # return 0.0
 
 
+def fnn_keras(input_size = (1,30)):
+    inputs = Input(input_size)
+    conv1 = Conv1D(64, 5, activation='relu', padding='same', kernel_initializer='he_normal')(inputs)
+    conv1 = Conv1D(30, 5, activation='relu', padding='same', kernel_initializer='he_normal')(conv1)
+    pool1 = MaxPooling1D(pool_size=1)(conv1)
+    flat = Flatten()(pool1)
+    results = Dense(1, activation='sigmoid')(flat)
+
+    model = Model(inputs=inputs, outputs=results)
+    model.summary()
+
+    sgd = SGD(lr=0.01, momentum=0.9, decay=0.01,nesterov=False)
+    model.compile(optimizer=Adam(lr = 0.01), loss='binary_crossentropy', metrics = ['accuracy'])
+
+    return model
+
+
+def fnnTrain(data,reTrain = False):
+    print("FNN Training [" + data["col"] + "] start!")
+
+    modelFile = data["filepath"] + 'fnn_' + data["col"] + '.pkl'
+
+    start = time.time()
+
+    batch_size = 16
+    epochs = 20
+
+    model = fnn_keras()
+
+    eval_size = int(data["x"].shape[0] * 0.1)
+    # print("eval_size:"+str(eval_size))
+    # print(data["x"].shape)
+
+    eval_x = data["x"].iloc[:eval_size, :]
+    eval_y = data["y"].iloc[:eval_size, :]
+
+    X_train = data["x"].values
+    X_train = X_train.reshape(X_train.shape[0],1,30)
+    X_test = eval_x.values
+    X_test = X_test.reshape(X_test.shape[0],1,30)
+
+    y_train = data["y"].values
+    y_train = y_train.reshape(-1,1)
+    y_test = eval_y.values
+    y_test = y_test.reshape(-1,1)
+
+    if os.path.isfile(modelFile) and reTrain == False:
+        print (data["col"] + " Training Model File exist, skip training, load it")
+        model = joblib.load(modelFile)
+    else:
+        model.fit(X_train, y_train,
+                batch_size=batch_size,
+                epochs=epochs,
+                verbose=1,
+                validation_data=(X_test, y_test))
+        joblib.dump(model, modelFile)
+
+    end = time.time()
+    print("FNN Training Done [" + data["col"] + "], spent: %.2fs" % (end - start))
+    return model
+
+
+def fnnTest(data):
+    print(data["loghead"] + data["col"] + " start!")
+    
+    X_test = data["x"].values
+    X_test = X_test.reshape(X_test.shape[0],1,30)
+    y_test = data["y"].values
+    y_test = y_test.reshape(-1,1)
+    
+    score = data["clf"].evaluate(X_test, y_test, verbose=0)
+
+    print(data["loghead"] + data["col"] + (' FNN Test Acc: %.2f' % score[1]))
+    return score[1]
+    # return 0.0
+
+
+def haEvaluate(test_x,test_y,resultFile):
+    #test_x = pd.read_csv(dataset_path + "/" + test_x_file_name)
+    #test_y = pd.read_csv(dataset_path + "/" + test_y_file_name)
+
+    pred_result = test_x.mean(axis=1).apply(lambda x: 1 if x>=0.5 else 0) # Use mean for prediction
+    number_of_data = test_y.shape[0]/test_y['id'].nunique() # The number of data of each slot
+
+    col_list = train_y.iloc[:,1:].columns.values # Timing list
+    pred_test = test_y['id'].to_frame()
+    pred_test = pred_test.assign(**{col:pred_result for col in col_list}) # Use same mean result for all timing to be predicted
+
+    accuracy_matrix = test_y.iloc[:,1:].values == pred_test.iloc[:,1:].values
+    pd_accuracy_matrix = pd.DataFrame.from_records(accuracy_matrix) # Numpy array to dataframe
+    pd_accuracy_matrix['id'] = test_y['id']
+    pd_accuracy_matrix = pd_accuracy_matrix.set_index('id')
+
+    output = pd_accuracy_matrix.groupby('id').apply(lambda x: round(x[x == True].count()/number_of_data,2)) # Evaluation result
+    output.to_csv(resultFile)
+
+
 def runTTXY(trainMethod, testMethod,filepath, train_X, train_Y, test_X, test_Y, output, filename, multiProcess):
     parkingSlotsNum = len(train_X.id.unique())
 
@@ -368,6 +472,15 @@ def generateTTDataSetAndRun(
                                      testEnd=testEnd
                                      )
 
+    # HA
+    if "HA" in tts:
+        if os.path.isfile(filepath + "ha.csv"):
+            print("HA acc data is exist, skip!")
+        else:
+            print("Start HA models evaluation!")
+            train_X, train_Y, test_X, test_Y = loadDataset(filepath)
+            haEvaluate(test_X,test_Y,filepath+"svr.csv")
+            
 
     # SVR
     if "SVR" in tts:
@@ -403,5 +516,16 @@ def generateTTDataSetAndRun(
             print("Start LightGBM models Training and Test!")
             train_X, train_Y, test_X, test_Y = loadDataset(filepath)
             runTTXY(lightGBMTrain, lightGBMTest, filepath, train_X, train_Y, test_X, test_Y, pd.DataFrame(columns=train_Y.columns), "lightGBM.csv", PROCESS_NUM//2)
+
+    # FNN
+        if "FNN" in tts:
+            reTrain = False
+
+            if os.path.isfile(filepath + "fnn.csv") and reTrain == False:
+                print("FNN acc data is exist, skip!")
+            else:
+                print("Start FNN models Training and Test!")
+                train_X, train_Y, test_X, test_Y = loadDataset(filepath)
+                runTTXY(FNNTrain, FNNTest, filepath, train_X, train_Y, test_X, test_Y, pd.DataFrame(columns=train_Y.columns), "fnn.csv", PROCESS_NUM//2)
 
 
