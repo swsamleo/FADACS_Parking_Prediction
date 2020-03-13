@@ -1,4 +1,5 @@
 import csv
+import pandas as pd
 import arrow
 import numpy as np
 import os
@@ -93,11 +94,14 @@ def saveToFiles(convert, outputCSV, outputCSV_x, outputCSV_y, parkingSlotID, par
                 getSubParkingDataSet(parkingSlotID, parkingEventsYearStr, startIndex + units, endIndex + 1, 1))
 
 
-##
 def convertParkingData(*args, **kwargs):
     parkingMinsDataFile = kwargs["input"]
     outputFile = kwargs["output"]
     year = kwargs["year"]
+    features = []
+    
+    if "features" in kwargs:
+        features = kwargs["features"]
 
     parkingSlotNum = 0
     maxParkingSlotsNum = 0
@@ -141,6 +145,9 @@ def convertParkingData(*args, **kwargs):
     outputCSV = open(outputFile, 'w')
     outputCSV_x = outputCSV
     outputCSV_y = outputCSV
+    
+    outputCSV_pky = open("pky_2017_"+str(interval)+"mins.csv", 'w')
+    outputCSV_pky.write("StreetMarker,YearParkingData\n")
 
     ## prepare output files
     if convert == "convert":
@@ -177,6 +184,7 @@ def convertParkingData(*args, **kwargs):
                     # print(log_head+" "+parkingSlotID+" missing the last day of 2017")
                     today = arrow.get(END_DATE_OF_YEAR, DATE_FORMAT).shift(days=+1).format(DATE_FORMAT)
                     parkingEventsYearStr += getMissingDaysData(yesterday, today, parkingEventsNum)
+                    outputCSV_pky.write(parkingSlotID+","+parkingEventsYearStr+"\n")
                     saveToFiles(convert, outputCSV, outputCSV_x, outputCSV_y, parkingSlotID, parkingEventsYearStr,
                                 y_oneDaySerial, startIndex, endIndex, units)
                     print(log_head + " " + parkingSlotID + " saved@[1], the parkingEventsYearStr length:" + str(
@@ -208,6 +216,7 @@ def convertParkingData(*args, **kwargs):
                 parkingEventsYearStr += getMissingDaysData(yesterday, line[1], parkingEventsNum)
 
             if line[1] == END_DATE_OF_YEAR:  # meets the last record then save the parking slot data.
+                outputCSV_pky.write(parkingSlotID+","+parkingEventsYearStr+"\n")
                 saveToFiles(convert, outputCSV, outputCSV_x, outputCSV_y, parkingSlotID, parkingEventsYearStr,
                             y_oneDaySerial, startIndex, endIndex, units)
                 print(log_head + " " + parkingSlotID + " saved@[0], the parkingEventsYearStr length:" + str(
@@ -216,6 +225,7 @@ def convertParkingData(*args, **kwargs):
             if i == count - 1 and line[1] != END_DATE_OF_YEAR:  # the last line of input file
                 today = arrow.get(END_DATE_OF_YEAR, DATE_FORMAT).shift(days=+1).format(DATE_FORMAT)
                 parkingEventsYearStr += getMissingDaysData(line[1], today, parkingEventsNum)
+                outputCSV_pky.write(parkingSlotID+","+parkingEventsYearStr+"\n")
                 saveToFiles(convert, outputCSV, outputCSV_x, outputCSV_y, parkingSlotID, parkingEventsYearStr,
                             y_oneDaySerial, startIndex, endIndex, units)
                 print(log_head + " " + parkingSlotID + " saved@[2], the parkingEventsYearStr length:" + str(
@@ -230,7 +240,7 @@ def convertParkingData(*args, **kwargs):
         outputCSV_x.close()
         outputCSV_y.close()
 
-
+        
 def genTTDataset(*args, **kwargs):
     source = "car_parking_2017_1mins_point.csv"
     interval = 1
@@ -244,8 +254,11 @@ def genTTDataset(*args, **kwargs):
     outputPath = "/run/user/1000/gvfs/smb-share:server=ds-tokyo.local,share=downloads/pp/"
     dirName = "TToutput"
     trainFileName = "train.csv"
+    featureTrainFileName = "features_train.csv"
     testFileName = "test.csv"
     slotsNum = 1
+    features = []
+    onLot = False
 
     if "source" in kwargs: source = kwargs["source"]
     if "interval" in kwargs: interval = kwargs["interval"]
@@ -259,8 +272,11 @@ def genTTDataset(*args, **kwargs):
     if "dirName" in kwargs: dirName = kwargs["dirName"]
     if "slotsNum" in kwargs: slotsNum = kwargs["slotsNum"]
     if "trainFileName" in kwargs: trainFileName = kwargs["trainFileName"]
+    if "featureTrainFileName" in kwargs: featureTrainFileName = kwargs["featureTrainFileName"]
     if "testFileName" in kwargs: testFileName = kwargs["testFileName"]
     if "yOneDaySerial" in kwargs: yOneDaySerial = kwargs["yOneDaySerial"]
+    if "features" in kwargs: features = kwargs["features"]
+    if "onLot" in kwargs: features = kwargs["onLot"]
 
 
     yOneDaySerial = np.arange(1, 31, 1).tolist() + \
@@ -296,6 +312,7 @@ def genTTDataset(*args, **kwargs):
                        maxParkingSlots=slotsNum,
                        y_oneDaySerial=yOneDaySerial
                        )
+    
     convertParkingData(input=source,
                        output=outputPath + dirName + "/" + testFileName,
                        year=year,
