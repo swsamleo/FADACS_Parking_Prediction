@@ -1,3 +1,6 @@
+import sys
+sys.path.append("..")
+
 import TTRunner
 
 parkingMinsFile = '/run/user/1000/gvfs/smb-share:server=ds-tokyo.local,share=downloads/pp/rmit-parking-prediction/car_parking_2017_5mins_point.csv'

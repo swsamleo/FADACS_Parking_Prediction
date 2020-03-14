@@ -17,6 +17,7 @@ import ParkingDataConvertor as pdc
 
 
 fc1 = fc.FeatureConvertor()
+PROCESS_NUM = cpu_count()
 
 def _checkAndCreatDir(dirPath):
     try:
@@ -94,6 +95,7 @@ class Experience:
             "baseUnit": 30,
             "number":None,
             "parkingIDs":[],
+            "experiences":{},
             "results":{}
         }
     
@@ -149,7 +151,7 @@ class Experience:
                 
     
     def showConfig(self):
-        print(self.config)
+        print(json.dumps(self.config, indent=2, sort_keys=True))
         
     def showFeatureList(self):
         print(fc.getFeatureList())
@@ -206,6 +208,8 @@ class Experience:
             np.save(xFile, x)
             np.save(yFile, y)
         
+        
+        print("Prepare Test Datasets")
         xFile = self.config["path"]+'/tx.npy'
         yFile = self.config["path"]+'/ty.npy'
         
@@ -217,8 +221,10 @@ class Experience:
             np.save(xFile, x)
             np.save(yFile, y)
     
-    def _trainAndTest(self,modelsName,trainMethod, testMethod, multiProcess,trainParameters = None,reTrain = False):
-        filepath = self.config["path"]+"/"
+    def _trainAndTest(self,modelsName,uuid,trainMethod, testMethod, multiProcess,trainParameters = None,reTrain = False):
+        filepath = self.config["path"]+"/"+uuid+"/"
+        _checkAndCreatDir(filepath)
+        
         tSerial = np.core.defchararray.add("t", np.char.mod('%d', self.config["predictionOffests"]))
         
         parkingSlotsNum = self.config["number"]
@@ -233,7 +239,8 @@ class Experience:
         
         for i in range(len(tSerial)):
             col = tSerial[i]
-            tdataset = {"col": col, 
+            tdataset = {
+                        "col": col, 
                         "x": train_X, 
                         "y": train_Y[:,:,i],
                         "filepath" : filepath,
@@ -289,43 +296,90 @@ class Experience:
         end = time.time()
         print("All Prediction(Test) Done, spent: %.2fs" % (end - start))
 
-        self.config["results"][modelsName] = res
+        self.config["results"][uuid] = res
         self.saveConfig()
         print("All Finished and Results Saved!")
     
     
-    def runModel(self,modelName,model,processNum,reTrain = False,trainParameters = None):
-        if modelName in self.config["results"] and reTrain == False:
+    def runModel(self,modelName,model,processNum,uuid,reTrain = False):
+        if uuid in self.config["results"] and reTrain == False:
             print(modelName+" results data is exist, skip!")
         else:
-            print("Start "+modelName+" models Training and Test!")
+            print("Start "+modelName+" ["+uuid+"] models Training and Test!")
             p = None
-            if trainParameters is not None and modelName in trainParameters:
-                p = trainParameters[modelName]
-            self._trainAndTest(modelName,model.train, model.test, processNum,p,reTrain)
-                
-            
-    def runModels(self,models = ["LightGBM"],reTrain = False,trainParameters = None):
-        PROCESS_NUM = cpu_count()
-        filepath = self.config["path"]
-
-#         if "HA" in models:
-#             if os.path.isfile(filepath + "ha.csv"):
-#                 print("HA acc data is exist, skip!")
-#             else:
-#                 print("Start HA models evaluation!")
-#                 train_X, train_Y, test_X, test_Y = loadDataset(filepath)
-#                 haEvaluate(test_X,test_Y,filepath+"svr.csv")
-
-        if "LightGBM" in models: self.runModel("lightGBM",lgbm,PROCESS_NUM//2,reTrain,trainParameters)
-        if "FNN" in models: self.runModel("FNN",fnn,0,reTrain,trainParameters)
-        if "LSTM" in models: self.runModel("LSTM",lstm,0,reTrain,trainParameters)
-            
-            
-    def removeResult(self, modelName):
-        if modelName in self.config["results"] :
-            del self.config["results"][modelName]
-            print("Remove "+modelName+" Model Test Results")
-        else:
-            print(""+modelName+" Model Test Results NOT EXIST!")
+            if "parameters" in self.config["experiences"][uuid]:
+                p = self.config["experiences"][uuid]["parameters"]
+            self._trainAndTest(modelName,uuid,model.train, model.test, processNum,trainParameters = p,reTrain = reTrain)
+    
+    
+    def add(self,ep):
+        ep["uuid"] = str(uuid.uuid1())
+        ep["createDate"] = arrow.now().format("YYYY-MM-DD HH:mm:ss"),
+        self.config["experiences"][ep["uuid"]] = ep
         self.saveConfig()
+        
+        print("Added Experience "+ep["uuid"])
+        print(json.dumps(ep, indent=2, sort_keys=True))
+        return ep["uuid"]
+        
+        
+    
+    def update(self,uuid,newExp):
+        if uuid in self.config["experiences"]:
+            newExp["uuid"] = uuid
+            self.config["experiences"][uuid] = newExp
+            print("Updated Experience "+uuid)
+        else:
+            print("Experience "+uuid +" is not Exist!")
+    
+    
+    def rm(self,ep):
+        if ep in self.config["experiences"]:
+            xexp = self.config["experiences"][ep]
+            del self.config["experiences"][ep]
+            
+            print("Removed Experience "+ep)
+            print(json.dumps(xexp, indent=2, sort_keys=True))
+            
+            if ep in self.config["results"]:
+                del self.config["results"][ep]
+                print("Removed Experience Result of "+ep)
+                
+            self.saveConfig()
+        else:
+            print("Experience "+ep +" is not Exist!")
+            
+    
+    def show(self,modelType = "all"):
+        for ep in self.config["experiences"]:
+            if modelType == "all" or modelType == self.config["experiences"][ep]["model"]:
+                print(json.dumps(self.config["experiences"][ep], indent=2, sort_keys=True))
+                
+        
+    #def runModels(self,models = ["LightGBM"],reTrain = False,trainParameters = None):
+    def run(self,ep,reTrain = False):
+        experience = ep
+        uuid = None
+        #if ep is uuid
+        if type(ep) == str:
+            experience = self.config["experiences"][ep]
+            uuid = ep
+        elif "uuid" not in experience:
+            uuid = self.add(experience)
+            experience = self.config["experiences"][uuid]
+
+        if "LightGBM" == experience["model"]: self.runModel("lightGBM",lgbm,PROCESS_NUM//2,uuid,reTrain)
+        if "FNN"  == experience["model"]: self.runModel("FNN",fnn,0,uuid,reTrain)
+        if "LSTM" == experience["model"]: self.runModel("LSTM",lstm,0,uuid,reTrain)
+
+            
+    def rmResult(self, uuid):
+        if ep in self.config["results"]:
+            del self.config["results"][uuid]
+            self.saveConfig()
+            print("Removed Experience Result of "+uuid)
+        else:
+            print("Experience "+uuid +" is not Exist!")
+        
+
+    

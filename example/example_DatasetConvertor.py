@@ -1,3 +1,6 @@
+import sys
+sys.path.append("..")
+
 import DatasetConvertor
 import numpy as np
 

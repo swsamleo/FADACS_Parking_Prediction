@@ -144,5 +144,5 @@ def test(data):
     metrics = ModelUtils.getMetrics(data["y"].squeeze(), pred_y)
     #rmse = root_mean_square_error(data["y"].squeeze(), pred_y)
     print(data["loghead"] + data["col"] + (' LSTM Test MAE: %.2f' % metrics["mae"]))
-    return {"metrics":metrics,"tIndex":data["col"]}
+    return {data["col"]:metrics}
     # return 0.0

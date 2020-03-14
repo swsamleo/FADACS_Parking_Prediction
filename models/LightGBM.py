@@ -66,5 +66,5 @@ def test(data):
 
     print(data["loghead"] + data["col"] + (' lightGBM Test MAE: %.2f' % metrics["mae"]))
     
-    return {"metrics":metrics,"tIndex":data["col"]}
+    return {data["col"]:metrics}
     # return 0.0

@@ -147,5 +147,5 @@ def test(data):
     metrics = ModelUtils.getMetrics(y_test.squeeze(), pred_y)
 
     print(data["loghead"] + data["col"] + (' FNN Test MAE: %.2f' % metrics["mae"]))
-    return {"metrics":metrics,"tIndex":data["col"]}
+    return {data["col"]:metrics}
     # return 0.0
