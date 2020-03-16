@@ -19,13 +19,14 @@ def fnn_keras(input_size = (1,30),
               momentum = 0.9,
               decay = 0.01,
               nesterov = False,
-              loss = 'binary_crossentropy'):
+              loss = 'mean_squared_error',
+              activation = "relu"):
     inputs = Input(input_size)
     conv1 = Conv1D(64, 5, activation='relu', padding='same', kernel_initializer='he_normal')(inputs)
     conv1 = Conv1D(input_size[1], 5, activation='relu', padding='same', kernel_initializer='he_normal')(conv1)
     pool1 = MaxPooling1D(pool_size=1)(conv1)
     flat = Flatten()(pool1)
-    results = Dense(1, activation='sigmoid')(flat)
+    results = Dense(1, activation='relu')(flat)
 
     model = Model(inputs=inputs, outputs=results)
     model.summary()
@@ -49,7 +50,8 @@ def train(data):
     momentum = 0.9
     decay = 0.01
     nesterov = False
-    loss = 'binary_crossentropy'
+    loss = 'mean_squared_error'
+    activation = "relu"
     verbose = 1
     gpu = False
 
@@ -63,6 +65,7 @@ def train(data):
         if "loss" in data["parameters"]: loss = data["parameters"]["loss"]
         if "verbose" in data["parameters"]: verbose = data["parameters"]["verbose"]
         if "gpu" in data["parameters"]: gpu = data["parameters"]["gpu"]
+        if "activation" in data["parameters"]: activation = data["parameters"]["activation"]
 
     if gpu:
         K.tensorflow_backend._get_available_gpus()
@@ -82,15 +85,18 @@ def train(data):
     y_test = data["y"][:eval_size, :]
 
     if os.path.isfile(modelFile) and data["reTrain"] == False:
-        print (data["col"] + " Training Model File exist, skip training, load it")
-        model = joblib.load(modelFile)
+        print (data["col"] + " Training Model File exist, skip training!")
+        return
+        #model = joblib.load(modelFile)
     else:
+        open(modelFile,"a").close()
         model = fnn_keras(input_size=(1,rowSize),
                           learningRate = learningRate,
                           momentum = momentum,
                           decay = decay,
                           nesterov = nesterov,
-                          loss = loss
+                          loss = loss,
+                          activation = activation
                          )
         model.fit(X_train, y_train,
                 batch_size=batch_size,
@@ -106,6 +112,10 @@ def train(data):
 
 def test(data):
     print(data["loghead"] + data["col"] + " start!")
+    start = time.time()
+
+    modelFile = data["filepath"] + 'fnn_' + data["col"] + '.pkl'
+
     rowSize = data["x"].shape[1]*data["x"].shape[2]
     data["x"] = data["x"].reshape(-1,1,rowSize)
     #data["y"] = data["y"].reshape(-1,1)
@@ -132,20 +142,25 @@ def test(data):
         if "use_multiprocessing" in data["parameters"]: use_multiprocessing = data["parameters"]["use_multiprocessing"]
         if "gpu" in data["parameters"]: gpu = data["parameters"]["gpu"]
 
-    if gpu:
-        K.tensorflow_backend._get_available_gpus()
+    if os.path.isfile(modelFile):
+        print (data["col"] + " loading model file:"+modelFile)
+        model = joblib.load(modelFile)
+            
+        pred_y = model.predict(X_test, 
+                                     batch_size=batch_size, 
+                                     verbose=0, 
+                                     steps=steps, 
+                                     callbacks=None, 
+                                     max_queue_size=max_queue_size, 
+                                     workers=workers, 
+                                     use_multiprocessing=use_multiprocessing)
 
-    pred_y = data["clf"].predict(X_test, 
-                                 batch_size=batch_size, 
-                                 verbose=0, 
-                                 steps=steps, 
-                                 callbacks=None, 
-                                 max_queue_size=max_queue_size, 
-                                 workers=workers, 
-                                 use_multiprocessing=use_multiprocessing)
-
-    metrics = ModelUtils.getMetrics(y_test.squeeze(), pred_y)
-
-    print(data["loghead"] + data["col"] + (' FNN Test MAE: %.2f' % metrics["mae"]))
-    return {data["col"]:metrics}
+        metrics = ModelUtils.getMetrics(y_test.squeeze(), pred_y)
+        
+        end = time.time()
+        print(data["loghead"] + data["col"] + (' FNN Test MAE: %.2f' % metrics["mae"])+", spent: %.2fs" % (end - start))
+        return {data["col"]:metrics}
+    else:
+        print(data["col"] + "No model file:"+modelFile)
+        print("PLZ confirm model file first!!!")
     # return 0.0

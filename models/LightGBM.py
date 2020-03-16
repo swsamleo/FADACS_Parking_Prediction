@@ -36,35 +36,60 @@ def train(data, reTrain = False):
 
     # yy = np.array(eval_y).squeeze()
     # print(yy)
+    
+    params = {
+          'device': 'cpu'
+          }
 
     gbm = lgb.LGBMRegressor(num_leaves=20 * data["parkingSlotsNum"],
-                             learning_rate=0.05,
-                             n_estimators=10 * data["parkingSlotsNum"])
+                             learning_rate=0.01,
+                             n_estimators=10 * data["parkingSlotsNum"],device_type = "gpu")
 
     if os.path.isfile(modelFile) and data["reTrain"] == False:
-        print (data["col"] + " Training Model File exist, skip training, load it")
-        gbm = joblib.load(modelFile)
+        print (data["col"] + " Training Model File exist, skip training!")
+        return 
+        #gbm = joblib.load(modelFile)
     else:
+        open(modelFile,"a").close()
         gbm.fit(data["x"][eval_size:,:], np.array(data["y"][eval_size:, :]).squeeze(),
                 eval_set=[(eval_x, np.array(eval_y).squeeze())],
                 early_stopping_rounds=5, verbose=False)
+#         gbm = lgb.train(params, train_set=dtrain, num_boost_round=10,
+#                 valid_sets=None, valid_names=None,
+#                 fobj=None, feval=None, init_model=None,
+#                 feature_name='auto', categorical_feature='auto',
+#                 early_stopping_rounds=None, evals_result=None,
+#                 verbose_eval=True,
+#                 keep_training_booster=False, callbacks=None)
         joblib.dump(gbm, modelFile)
 
     end = time.time()
     print("lightGBM Training Done [" + data["col"] + "], spent: %.2fs" % (end - start))
-    return gbm
+    #return gbm
 
 
 # lightGBM model training method
 def test(data):
     print(data["loghead"] + data["col"] + " start!")
+    modelFile = data["filepath"] + 'lightgbm_' + data["col"] + '.pkl'
+    start = time.time()
+    
     data["x"] = data["x"].reshape(-1,data["x"].shape[1]*data["x"].shape[2])
     
-    pred_y = data["clf"].predict(data["x"])
+    if os.path.isfile(modelFile):
+        print(data["col"] + "loading model file:"+modelFile)
+        
+        gbm = joblib.load(modelFile)
+        
+        pred_y = gbm.predict(data["x"])
 
-    metrics = ModelUtils.getMetrics(data["y"].squeeze(), pred_y)
+        metrics = ModelUtils.getMetrics(data["y"].squeeze(), pred_y)
 
-    print(data["loghead"] + data["col"] + (' lightGBM Test MAE: %.2f' % metrics["mae"]))
-    
-    return {data["col"]:metrics}
+        end = time.time()
+        print(data["loghead"] + data["col"] + (' lightGBM Test MAE: %.2f' % metrics["mae"])+", spent: %.2fs" % (end - start))
+        return {data["col"]:metrics}
+    else:
+        print(data["col"] + "No model file:"+modelFile)
+        print("PLZ confirm model file first!!!")
+        
     # return 0.0

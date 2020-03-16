@@ -4,6 +4,7 @@ import math
 import time
 import os
 
+import keras
 from keras.models import *
 from keras.layers import *
 from keras.optimizers import *
@@ -13,6 +14,11 @@ import joblib
 
 from . import ModelUtils
 
+def enableGPU():
+    config = tf.ConfigProto( device_count = {'GPU': 2 , 'CPU': 7} ) 
+    sess = tf.Session(config=config) 
+    keras.backend.set_session(sess)
+    print("Enabled GPU!")
 
 """
  Define Keras LSTM model.
@@ -34,6 +40,7 @@ def lstm(input_size,output_size,learningRate = 0.01,loss = 'mae'):
     return model
 
 
+# +
 def train(data):
     print("LSTM Training [" + data["col"] + "] start!")
 
@@ -50,6 +57,9 @@ def train(data):
     verbose = 1
     gpu = False
     
+    print("Input parameters:")
+    print(data["parameters"])
+    
     if data["parameters"] is not None:
         if "batch_size" in data["parameters"]: batch_size = data["parameters"]["batch_size"]
         if "epochs" in data["parameters"]: epochs = data["parameters"]["epochs"]
@@ -59,9 +69,6 @@ def train(data):
         if "learningRate" in data["parameters"]: learningRate = data["parameters"]["learningRate"]
         if "loss" in data["parameters"]: loss = data["parameters"]["loss"]
         if "gpu" in data["parameters"]: gpu = data["parameters"]["gpu"]
-    
-    if gpu:
-        K.tensorflow_backend._get_available_gpus()
     
     eval_size = int(data["x"].shape[0] * 0.1)
     # print("eval_size:"+str(eval_size))
@@ -76,9 +83,16 @@ def train(data):
     test_y = data["y"][:eval_size, :]
 
     if os.path.isfile(modelFile) and data["reTrain"] == False:
-        print (data["col"] + " Training Model File exist, skip training, load it")
-        model = joblib.load(modelFile)
+        print (data["col"] + " Training Model File exist, skip training!")
+        return
+#         model = joblib.load(modelFile)
     else:
+        open(modelFile,"a").close()
+
+#         if gpu == True:
+#             enableGPU()
+            
+#         with tf.device("gpu"):
         model = lstm(input_size = (train_X.shape[1],train_X.shape[2]),
                      output_size = train_y.shape[1],
                      learningRate = learningRate,
@@ -86,13 +100,14 @@ def train(data):
                     )
         es = EarlyStopping(monitor=monitor, mode=mode, verbose=verbose)
 
+#         with tf.Session(config=tf.ConfigProto(log_device_placement=True)) as session:
         model.fit(train_X, train_y,
                     batch_size=batch_size,
                     epochs=epochs,
                     verbose=verbose,
                     validation_data=(test_X, test_y),
                     callbacks=[es])
-        
+
         score = model.evaluate(test_X, test_y, verbose=0)
         print('Test loss:', score[0])
         print('Test Acc:', score[1])
@@ -101,11 +116,16 @@ def train(data):
 
     end = time.time()
     print("LSTM Training Done [" + data["col"] + "], spent: %.2fs" % (end - start))
-    return model
+    return
+#     return model
 
+
+# -
 
 def test(data):
     print(data["loghead"] + data["col"] + " start!")
+    start = time.time()
+    modelFile = data["filepath"] + 'lstm_' + data["col"] + '.pkl'
 
     X_test = data["x"]
     y_test = data["y"]
@@ -129,20 +149,22 @@ def test(data):
         if "use_multiprocessing" in data["parameters"]: use_multiprocessing = data["parameters"]["use_multiprocessing"]
         if "gpu" in data["parameters"]: gpu = data["parameters"]["gpu"]
 
-    if gpu:
-        K.tensorflow_backend._get_available_gpus()
-        
-    pred_y = data["clf"].predict(X_test, 
-                                 batch_size=batch_size, 
-                                 verbose=0, 
-                                 steps=steps, 
-                                 callbacks=None, 
-                                 max_queue_size=max_queue_size, 
-                                 workers=workers, 
-                                 use_multiprocessing=use_multiprocessing)
+    if os.path.isfile(modelFile):
+        print (data["col"] + "loading model file:"+modelFile)
+        model = joblib.load(modelFile)
+    
+        pred_y = model.predict(X_test, 
+                                     batch_size=batch_size, 
+                                     verbose=0, 
+                                     steps=steps, 
+                                     callbacks=None, 
+                                     max_queue_size=max_queue_size, 
+                                     workers=workers, 
+                                     use_multiprocessing=use_multiprocessing)
 
-    metrics = ModelUtils.getMetrics(data["y"].squeeze(), pred_y)
-    #rmse = root_mean_square_error(data["y"].squeeze(), pred_y)
-    print(data["loghead"] + data["col"] + (' LSTM Test MAE: %.2f' % metrics["mae"]))
-    return {data["col"]:metrics}
+        metrics = ModelUtils.getMetrics(data["y"].squeeze(), pred_y)
+        #rmse = root_mean_square_error(data["y"].squeeze(), pred_y)
+        end = time.time()
+        print(data["loghead"] + data["col"] + (' LSTM Test MAE: %.2f' % metrics["mae"])+",spent: %.2fs" % (end - start))
+        return {data["col"]:metrics}
     # return 0.0

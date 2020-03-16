@@ -43,7 +43,7 @@ def _getParkingIdDataset(id,interval,start, end,features, type = "lot"):
         return np.concatenate((p1.reshape((-1, 1)),f1),axis=1)
     else:
         return p1.reshape((-1, 1))
-    
+
 
 def _genXYDatasetByParkingIdDataset(parkingData,unit,yIndexes):
     parkingDataLength = parkingData.shape[0]
@@ -75,8 +75,8 @@ def _genXYDatasetByParkingIdDataset(parkingData,unit,yIndexes):
     #print("X:"+str(X.shape))
     
     return X,y
-        
-    
+
+
 class Experience:
     def __init__(self,*args, **kwargs):
         self.config = {
@@ -250,11 +250,12 @@ class Experience:
                        }
             trainDatasets.append(tdataset)
             if multiProcess == 0:
-                clfs.append(trainMethod(tdataset))
+#                 clfs.append(trainMethod(tdataset))
+                trainMethod(tdataset)
 
         if multiProcess > 0:
             p = Pool(processes=multiProcess)
-            clfs = p.map(trainMethod, trainDatasets)
+            p.map(trainMethod, trainDatasets)
             p.close()
             p.join()
 
@@ -275,7 +276,6 @@ class Experience:
                         "col": col, 
                         "x": test_X, 
                         "y": test_Y[:,:,i], 
-                        "clf": clfs[i],
                         "filepath":filepath,
                         "parkingSlotsNum":parkingSlotsNum,
                         "parameters":trainParameters}
@@ -368,9 +368,9 @@ class Experience:
             uuid = self.add(experience)
             experience = self.config["experiences"][uuid]
 
-        if "LightGBM" == experience["model"]: self.runModel("lightGBM",lgbm,PROCESS_NUM//2,uuid,reTrain)
-        if "FNN"  == experience["model"]: self.runModel("FNN",fnn,0,uuid,reTrain)
-        if "LSTM" == experience["model"]: self.runModel("LSTM",lstm,0,uuid,reTrain)
+        if "LightGBM" == experience["model"]: self.runModel("lightGBM",lgbm,0,uuid,reTrain)
+        if "FNN"  == experience["model"]: self.runModel("FNN",fnn,2,uuid,reTrain)
+        if "LSTM" == experience["model"]: self.runModel("LSTM",lstm,2,uuid,reTrain)
 
             
     def rmResult(self, uuid):
@@ -380,6 +380,6 @@ class Experience:
             print("Removed Experience Result of "+uuid)
         else:
             print("Experience "+uuid +" is not Exist!")
-        
 
-    
+
+

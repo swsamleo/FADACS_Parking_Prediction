@@ -20,7 +20,7 @@ def getALLParkingAeraArray(interval,type = "lot" ,location = "MelbCity",number =
     else:
         return random.sample(list, number)
 
-def getParkingEventsArray(id,interval,type = "lot" ,location = "MelbCity",start = None,end = None, output = "list",normalize = True):
+def getParkingEventsArray(id,interval,type = "lot" ,location = "MelbCity",start = None,end = None, output = "list",normalize = False):
     df = pd.read_csv("./datasets/"+location+"/parking/"+type+"s/"+str(interval)+"m/"+id+".csv",index_col=0,parse_dates=True)
     if normalize:
         df[id] = df[id]/MAXPARKING_NUM
