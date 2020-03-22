@@ -43,7 +43,7 @@ def train(data, reTrain = False):
 
     gbm = lgb.LGBMRegressor(num_leaves=20 * data["parkingSlotsNum"],
                              learning_rate=0.01,
-                             n_estimators=10 * data["parkingSlotsNum"],device_type = "gpu")
+                             n_estimators=10 * data["parkingSlotsNum"],device_type = "cpu")
 
     if os.path.isfile(modelFile) and data["reTrain"] == False:
         print (data["col"] + " Training Model File exist, skip training!")

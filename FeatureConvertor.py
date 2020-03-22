@@ -7,14 +7,29 @@ DATE_FORMAT = 'MM/DD/YYYY'
 
 class FeatureConvertor():
 
-    def __init__(self, weather_csv = "./datasets/MelbCity/features/weather.csv", 
-                 slot_poi_csv = "./datasets/MelbCity/features/poi.csv",
-                 lot_poi_csv = "./datasets/MelbCity/features/poi.lots.csv",
-                 rules_nph_cvs = "./datasets/MelbCity/features/rule.nph.csv",
-                 rules_ph_cvs = "./datasets/MelbCity/features/rule.ph.csv",
-                 rules_lot_nph_cvs = "./datasets/MelbCity/features/rule.lots.nph.csv",
-                 rules_lot_ph_cvs = "./datasets/MelbCity/features/rule.lots.ph.csv",
+    def __init__(self,
+                 location = "MelbCity"
                 ):
+        
+        weather_csv = "./datasets/MelbCity/features/weather.csv"
+        slot_poi_csv = "./datasets/MelbCity/features/poi.csv"
+        lot_poi_csv = "./datasets/MelbCity/features/poi.lots.csv"
+        rules_nph_cvs = "./datasets/MelbCity/features/rule.nph.csv"
+        rules_ph_cvs = "./datasets/MelbCity/features/rule.ph.csv"
+        rules_lot_nph_cvs = "./datasets/MelbCity/features/rule.lots.nph.csv"
+        rules_lot_ph_cvs = "./datasets/MelbCity/features/rule.lots.ph.csv"
+        
+        if location == "Mornington":
+            weather_csv = "./datasets/Mornington/features/weather.csv"
+            slot_poi_csv = "./datasets/Mornington/features/poi.csv"
+            lot_poi_csv = "./datasets/Mornington/features/poi.lots.csv"
+            rules_nph_cvs = "./datasets/Mornington/features/rule.nph.csv"
+            rules_ph_cvs = "./datasets/Mornington/features/rule.ph.csv"
+            rules_lot_nph_cvs = "./datasets/Mornington/features/rule.lots.nph.csv"
+            rules_lot_ph_cvs = "./datasets/Mornington/features/rule.lots.ph.csv"
+        
+        
+        
         self.weather_csv = weather_csv
         self.slot_poi_csv = slot_poi_csv
         self.lot_poi_csv = lot_poi_csv
@@ -42,18 +57,20 @@ class FeatureConvertor():
         self.df_rules_hp = None
         self.df_rules_lot_nhp = None
         self.df_rules_lot_hp = None
-        
+        #print("xxx weather "+weather_csv)
+
 #         self.df_weather = pd.read_csv(weather_csv,index_col=0,parse_dates=True)
 #         self.df_slot_poi = pd.read_csv(slot_poi_csv)
 #         self.df_rules_nhp = pd.read_csv(rules_nph_cvs)
 #         self.df_rules_hp = pd.read_csv(rules_ph_cvs)
     
-    def getFeatuerList(self):
+    def getFeatureList(self):
         return self.weatherFs + self.slot_poiFs + self.slot_ruleFs + ["Day","Hour","Minute","DayOfWeek","DayOfMonth","DayOfYear"]
     
     def getWeatherYearSerial(self, interval):
         if self.df_weather is None:
             mms = MinMaxScaler()
+            print(self.weather_csv)
             self.df_weather = pd.read_csv(self.weather_csv,index_col=0,parse_dates=True)
             self.df_weather[self.weatherFs] = mms.fit_transform(self.df_weather[self.weatherFs])
 
@@ -71,9 +88,15 @@ class FeatureConvertor():
         
         df1 = None
         if type == "slot":
-            df1 = self.df_slot_poi[self.df_slot_poi["StreetMarker"] == id]
+            if "StreetMarker" in self.df_slot_poi.columns.values:
+                df1 = self.df_slot_poi[self.df_slot_poi["StreetMarker"] == id]
+            else:
+                df1 = self.df_slot_poi[self.df_slot_poi["id"] == id]
         elif type == "lot":
-            df1 = self.df_lot_poi[self.df_lot_poi["LotId"] == int(id)]
+            if "LotId" in self.df_lot_poi.columns.values:
+                df1 = self.df_lot_poi[self.df_lot_poi["LotId"] == int(id)]
+            else:
+                df1 = self.df_lot_poi[self.df_lot_poi["id"] == int(id)]
 
         df1['day'] = df1["datetime"].str[:10]
         df1['time'] = df1["datetime"].str[11:]

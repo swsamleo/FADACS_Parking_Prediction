@@ -26,7 +26,7 @@ def fnn_keras(input_size = (1,30),
     conv1 = Conv1D(input_size[1], 5, activation='relu', padding='same', kernel_initializer='he_normal')(conv1)
     pool1 = MaxPooling1D(pool_size=1)(conv1)
     flat = Flatten()(pool1)
-    results = Dense(1, activation='relu')(flat)
+    results = Dense(1, activation = activation)(flat)
 
     model = Model(inputs=inputs, outputs=results)
     model.summary()

@@ -16,8 +16,10 @@ import FeatureConvertor as fc
 import ParkingDataConvertor as pdc
 
 
-fc1 = fc.FeatureConvertor()
-PROCESS_NUM = cpu_count()
+melbFC = fc.FeatureConvertor()
+mpsFC = fc.FeatureConvertor(location = "Mornington")
+
+PROCESS_NUM = cpu_count() // 2
 
 def _checkAndCreatDir(dirPath):
     try:
@@ -31,15 +33,20 @@ def _getDateOffsetIndex(day,interval):
     return (arrow.get(day+" 00:00","MM/DD/YYYY HH:mm") - arrow.get("01/01/2017"+" 00:00","MM/DD/YYYY HH:mm")).days*24*60//interval
 
 
-def _getParkingIdDataset(id,interval,start, end,features, type = "lot"):
+def _getParkingIdDataset(id,interval,start, end,features, type = "lot",location = "MelbCity"):
     startIndex = _getDateOffsetIndex(start,interval)
     endIndex = _getDateOffsetIndex(end,interval)
     _type = type
     
-    p1 = pdc.getParkingEventsArray(id,interval,type = _type,start = startIndex, end = endIndex,output="numpy")
+    p1 = pdc.getParkingEventsArray(id,interval,type = _type,start = startIndex, end = endIndex,output="numpy",location = location)
     
     if len(features) > 0:
-        f1 = fc1.getFeatures(id,features,start,end,interval,type = _type)
+        f1 = None
+        if location == "MelbCity":
+            f1 = melbFC.getFeatures(id,features,start,end,interval,type = _type)
+        elif location == "Mornington":
+            f1 = mpsFC.getFeatures(id,features,start,end,interval,type = _type)
+
         return np.concatenate((p1.reshape((-1, 1)),f1),axis=1)
     else:
         return p1.reshape((-1, 1))
@@ -77,7 +84,7 @@ def _genXYDatasetByParkingIdDataset(parkingData,unit,yIndexes):
     return X,y
 
 
-class Experience:
+class Experiment:
     def __init__(self,*args, **kwargs):
         self.config = {
             "path" : ".",
@@ -100,7 +107,7 @@ class Experience:
         }
     
     def setup(self,*args, **kwargs):
-        if "reLoadExistDir" in kwargs and kwargs["reLoadExistDir"] == True:
+        if "reLoadExistDir" in kwargs and kwargs["reLoadExistDir"] == True and os.path.exists(kwargs["path"]+'/exp.json'):
             self.loadConfig(kwargs["path"]+'/exp.json')
         else:
             self.config["predictionOffests"] = np.arange(1, 31, 1).tolist() + \
@@ -154,7 +161,7 @@ class Experience:
         print(json.dumps(self.config, indent=2, sort_keys=True))
         
     def showFeatureList(self):
-        print(fc.getFeatureList())
+        print(melbFC.getFeatureList())
 
     def _generateTTDatasets(self,type = "train"):
         
@@ -221,7 +228,7 @@ class Experience:
             np.save(xFile, x)
             np.save(yFile, y)
     
-    def _trainAndTest(self,modelsName,uuid,trainMethod, testMethod, multiProcess,trainParameters = None,reTrain = False):
+    def _trainAndTest(self,modelsName,uuid,trainMethod, testMethod, multiProcess,trainParameters = None,reTrain = False,Test = True):
         filepath = self.config["path"]+"/"+uuid+"/"
         _checkAndCreatDir(filepath)
         
@@ -231,8 +238,8 @@ class Experience:
 
         start = time.time()
         
-        train_X = np.load(self.config["path"]+'/x.npy')
-        train_Y = np.load(self.config["path"]+'/y.npy')
+        train_X = np.load(self.config["path"]+'/x.npy',allow_pickle=True)
+        train_Y = np.load(self.config["path"]+'/y.npy',allow_pickle=True)
         
         trainDatasets = []
         clfs = []
@@ -262,34 +269,36 @@ class Experience:
         end = time.time()
         print("All Training Done, spent: %.2fs" % (end - start))
         
-        start = time.time()
-        
-        test_X = np.load(self.config["path"]+'/tx.npy')
-        test_Y = np.load(self.config["path"]+'/ty.npy')
-        
-        testDatasets = []
-        res = []
-        for i in range(len(tSerial)):
-            log_head = "[" + str(i) + "/" + str(len(tSerial)) + "]"
-            col = tSerial[i]
-            testData = {"loghead": log_head, 
-                        "col": col, 
-                        "x": test_X, 
-                        "y": test_Y[:,:,i], 
-                        "filepath":filepath,
-                        "parkingSlotsNum":parkingSlotsNum,
-                        "parameters":trainParameters}
-            if multiProcess == 0:
-                res.append(testMethod(testData))
-            else:
-                testDatasets.append(testData)
+        if Test:
+            print("Start Test Models with Test Dataset!")
+            start = time.time()
 
-        if multiProcess > 0:
-            p2 = Pool(processes=multiProcess)
-            ares = p2.map(testMethod, testDatasets)
-            p2.close()
-            p2.join()
-            res = res + ares
+            test_X = np.load(self.config["path"]+'/tx.npy',allow_pickle=True)
+            test_Y = np.load(self.config["path"]+'/ty.npy',allow_pickle=True)
+
+            testDatasets = []
+            res = []
+            for i in range(len(tSerial)):
+                log_head = "[" + str(i) + "/" + str(len(tSerial)) + "]"
+                col = tSerial[i]
+                testData = {"loghead": log_head, 
+                            "col": col, 
+                            "x": test_X, 
+                            "y": test_Y[:,:,i], 
+                            "filepath":filepath,
+                            "parkingSlotsNum":parkingSlotsNum,
+                            "parameters":trainParameters}
+                if multiProcess == 0:
+                    res.append(testMethod(testData))
+                else:
+                    testDatasets.append(testData)
+
+            if multiProcess > 0:
+                p2 = Pool(processes=multiProcess)
+                ares = p2.map(testMethod, testDatasets)
+                p2.close()
+                p2.join()
+                res = res + ares
 
         print("TrainAndTest All Finished!")
 
@@ -301,7 +310,7 @@ class Experience:
         print("All Finished and Results Saved!")
     
     
-    def runModel(self,modelName,model,processNum,uuid,reTrain = False):
+    def runModel(self,modelName,model,processNum,uuid,reTrain = False,Test = True):
         if uuid in self.config["results"] and reTrain == False:
             print(modelName+" results data is exist, skip!")
         else:
@@ -309,7 +318,7 @@ class Experience:
             p = None
             if "parameters" in self.config["experiences"][uuid]:
                 p = self.config["experiences"][uuid]["parameters"]
-            self._trainAndTest(modelName,uuid,model.train, model.test, processNum,trainParameters = p,reTrain = reTrain)
+            self._trainAndTest(modelName,uuid,model.train, model.test, processNum,trainParameters = p,reTrain = reTrain,Test = Test)
     
     
     def add(self,ep):
@@ -357,20 +366,27 @@ class Experience:
                 
         
     #def runModels(self,models = ["LightGBM"],reTrain = False,trainParameters = None):
-    def run(self,ep,reTrain = False):
-        experience = ep
-        uuid = None
-        #if ep is uuid
-        if type(ep) == str:
-            experience = self.config["experiences"][ep]
-            uuid = ep
-        elif "uuid" not in experience:
-            uuid = self.add(experience)
-            experience = self.config["experiences"][uuid]
+    def run(self,ep = None,reTrain = False,Test = True):
+        
+        if ep == None:
+            print("Run all experiments! because no special experiment assigned")
+            for uuid in self.config["experiences"]:
+                print("Start Run "+uuid)
+                self.run(uuid)
+        else:
+            experience = ep
+            uuid = None
+            #if ep is uuid
+            if type(ep) == str:
+                experience = self.config["experiences"][ep]
+                uuid = ep
+            elif "uuid" not in experience:
+                uuid = self.add(experience)
+                experience = self.config["experiences"][uuid]
 
-        if "LightGBM" == experience["model"]: self.runModel("lightGBM",lgbm,0,uuid,reTrain)
-        if "FNN"  == experience["model"]: self.runModel("FNN",fnn,2,uuid,reTrain)
-        if "LSTM" == experience["model"]: self.runModel("LSTM",lstm,2,uuid,reTrain)
+            if "LightGBM" == experience["model"]: self.runModel("lightGBM",lgbm,0,uuid,reTrain,Test)
+            if "FNN"  == experience["model"]: self.runModel("FNN",fnn,2,uuid,reTrain,Test)
+            if "LSTM" == experience["model"]: self.runModel("LSTM",lstm,2,uuid,reTrain,Test)
 
             
     def rmResult(self, uuid):
