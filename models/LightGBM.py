@@ -29,10 +29,6 @@ def train(data, reTrain=False):
     eval_x = data["x"][:eval_size, :]
     eval_y = data["y"][:eval_size, :]
 
-    params = {
-        'device': 'cpu'
-    }
-
     boosting_type           = 'gbdt'
     num_leaves              = 31
     max_depth               = -1
@@ -54,7 +50,7 @@ def train(data, reTrain=False):
     n_jobs                  = -1
     silent                  = True
     importance_type         = 'split'
-    verbose                 = True
+    verbose                 = 1
 
     if data["parameters"] is not None:
         if "learning_rate" in data["parameters"]:
@@ -68,39 +64,22 @@ def train(data, reTrain=False):
         if "early_stopping_rounds" in data["parameters"]:
             early_stopping_rounds = data["parameters"]["early_stopping_rounds"]
 
-        if "" in data["parameters"]:= data["parameters"][""]
-        if "" in data["parameters"]:= data["parameters"][""]
-        if "" in data["parameters"]:= data["parameters"][""]
-        if "" in data["parameters"]:= data["parameters"][""]
-        if "" in data["parameters"]:= data["parameters"][""]
-        if "" in data["parameters"]:= data["parameters"][""]
-        if "" in data["parameters"]:= data["parameters"][""]
-        if "" in data["parameters"]:= data["parameters"][""]
-        if "" in data["parameters"]:= data["parameters"][""]
-        if "" in data["parameters"]:= data["parameters"][""]
-        if "" in data["parameters"]:= data["parameters"][""]
-        if "" in data["parameters"]:= data["parameters"][""]
-        if "" in data["parameters"]:= data["parameters"][""]
-        if "" in data["parameters"]:= data["parameters"][""]
-        if "" in data["parameters"]:= data["parameters"][""]
-        if "" in data["parameters"]:= data["parameters"][""]
-        if "" in data["parameters"]:= data["parameters"][""]
-        if "" in data["parameters"]:= data["parameters"][""]
-        if "" in data["parameters"]:= data["parameters"][""]
-        if "" in data["parameters"]:= data["parameters"][""]
-        if "" in data["parameters"]:= data["parameters"][""]
-        if "" in data["parameters"]:= data["parameters"][""]
-        if "" in data["parameters"]:= data["parameters"][""]
-        if "" in data["parameters"]:= data["parameters"][""]
-        if "" in data["parameters"]:= data["parameters"][""]
-        if "" in data["parameters"]:= data["parameters"][""]
-        if "" in data["parameters"]:= data["parameters"][""]
-        if "" in data["parameters"]:= data["parameters"][""]
-        if "" in data["parameters"]:= data["parameters"][""]
-        if "" in data["parameters"]:= data["parameters"][""]
-        if "" in data["parameters"]:= data["parameters"][""]
-        if "" in data["parameters"]:= data["parameters"][""]
-        if "" in data["parameters"]:= data["parameters"][""]
+        if "boosting_type" in data["parameters"]: boosting_type= data["parameters"]["boosting_type"]
+        if "max_depth" in data["parameters"]:max_depth= data["parameters"]["max_depth"]
+        if "subsample_for_bin" in data["parameters"]:subsample_for_bin= data["parameters"]["subsample_for_bin"]
+        if "objective" in data["parameters"]:objective= data["parameters"]["objective"]
+        if "class_weight" in data["parameters"]:class_weight= data["parameters"]["class_weight"]
+        if "min_split_gain" in data["parameters"]:min_split_gain= data["parameters"]["min_split_gain"]
+        if "min_child_weight" in data["parameters"]:min_child_weight= data["parameters"]["min_child_weight"]
+        if "min_child_samples" in data["parameters"]:min_child_samples= data["parameters"]["min_child_samples"]
+        if "subsample" in data["parameters"]:subsample= data["parameters"]["subsample"]
+        if "subsample_freq" in data["parameters"]:subsample_freq= data["parameters"]["subsample_freq"]
+        if "reg_alpha" in data["parameters"]:reg_alpha= data["parameters"]["reg_alpha"]
+        if "reg_lambda" in data["parameters"]:reg_lambda= data["parameters"]["reg_lambda"]
+        if "random_state" in data["parameters"]:random_state= data["parameters"]["random_state"]
+        if "n_jobs" in data["parameters"]:n_jobs= data["parameters"]["n_jobs"]
+        if "silent" in data["parameters"]:silent= data["parameters"]["silent"]
+        if "importance_type" in data["parameters"]:importance_type= data["parameters"]["importance_type"]
 
     gbm = lgb.LGBMRegressor(boosting_type           = boosting_type,
                             num_leaves              = num_leaves,
