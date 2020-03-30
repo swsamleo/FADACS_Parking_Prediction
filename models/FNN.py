@@ -16,23 +16,20 @@ from . import ModelUtils
 
 def fnn_keras(input_size = (1,30),
               learningRate = 0.01,
-              momentum = 0.9,
-              decay = 0.01,
-              nesterov = False,
               loss = 'mean_squared_error',
               activation = "relu"):
     inputs = Input(input_size)
-    conv1 = Conv1D(64, 5, activation='relu', padding='same', kernel_initializer='he_normal')(inputs)
-    conv1 = Conv1D(input_size[1], 5, activation='relu', padding='same', kernel_initializer='he_normal')(conv1)
-    pool1 = MaxPooling1D(pool_size=1)(conv1)
-    flat = Flatten()(pool1)
-    results = Dense(1, activation = activation)(flat)
+    flat = Flatten()(inputs)
+    nom1 = BatchNormalization()(flat)
+    dense1 =Dense(input_size[-1], activation=activation)(nom1)
+    nom2 = BatchNormalization()(dense1)
+    results = Dense(1, activation=activation)(nom2)
+
 
     model = Model(inputs=inputs, outputs=results)
     model.summary()
 
-    sgd = SGD(lr=learningRate, momentum=momentum, decay=decay,nesterov=nesterov)
-    model.compile(optimizer=Adam(lr = learningRate), loss=loss, metrics = ['accuracy'])
+    model.compile(optimizer=Adam(lr = learningRate), loss=loss, metrics = ['mae','mse'])
 
     return model
 
@@ -47,9 +44,9 @@ def train(data):
     batch_size = 16
     epochs = 20
     learningRate = 0.01
-    momentum = 0.9
-    decay = 0.01
-    nesterov = False
+#     momentum = 0.9
+#     decay = 0.01
+#     nesterov = False
     loss = 'mean_squared_error'
     activation = "relu"
     verbose = 1
@@ -59,9 +56,6 @@ def train(data):
         if "batch_size" in data["parameters"]: batch_size = data["parameters"]["batch_size"]
         if "epochs" in data["parameters"]: epochs = data["parameters"]["epochs"]
         if "learningRate" in data["parameters"]: learningRate = data["parameters"]["learningRate"]
-        if "momentum" in data["parameters"]: momentum = data["parameters"]["momentum"]
-        if "decay" in data["parameters"]: decay = data["parameters"]["decay"]
-        if "nesterov" in data["parameters"]: nesterov = data["parameters"]["nesterov"]
         if "loss" in data["parameters"]: loss = data["parameters"]["loss"]
         if "verbose" in data["parameters"]: verbose = data["parameters"]["verbose"]
         if "gpu" in data["parameters"]: gpu = data["parameters"]["gpu"]
@@ -89,12 +83,9 @@ def train(data):
         return
         #model = joblib.load(modelFile)
     else:
-        open(modelFile,"a").close()
+        #open(modelFile,"a").close()
         model = fnn_keras(input_size=(1,rowSize),
                           learningRate = learningRate,
-                          momentum = momentum,
-                          decay = decay,
-                          nesterov = nesterov,
                           loss = loss,
                           activation = activation
                          )

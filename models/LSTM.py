@@ -87,7 +87,7 @@ def train(data):
         return
 #         model = joblib.load(modelFile)
     else:
-        open(modelFile,"a").close()
+        #open(modelFile,"a").close()
 
 #         if gpu == True:
 #             enableGPU()

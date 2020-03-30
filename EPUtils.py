@@ -55,7 +55,7 @@ def drawResult(filePath):
             #print(b)
             
             for i in config["predictionOffests"]:
-                #print(b["t"+str(i)])
+                print(b["t"+str(i)])
                 mae.append(b["t"+str(i)]["mae"])
                 rmse.append(b["t"+str(i)]["rmse"])
                 #if "r2" in config["results"][uuid]["t"+str(i)]:

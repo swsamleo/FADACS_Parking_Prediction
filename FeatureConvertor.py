@@ -2,6 +2,9 @@ import pandas as pd
 import numpy as np
 import arrow
 from sklearn.preprocessing import MinMaxScaler
+from TLogger import *
+
+logger = Logger("FeatureConvertor")
 
 DATE_FORMAT = 'MM/DD/YYYY'
 
@@ -18,6 +21,7 @@ class FeatureConvertor():
         rules_ph_cvs = "./datasets/MelbCity/features/rule.ph.csv"
         rules_lot_nph_cvs = "./datasets/MelbCity/features/rule.lots.nph.csv"
         rules_lot_ph_cvs = "./datasets/MelbCity/features/rule.lots.ph.csv"
+        self.START_DATE = arrow.get("01/01/2017",DATE_FORMAT)
         
         if location == "Mornington":
             weather_csv = "./datasets/Mornington/features/weather.csv"
@@ -27,9 +31,7 @@ class FeatureConvertor():
             rules_ph_cvs = "./datasets/Mornington/features/rule.ph.csv"
             rules_lot_nph_cvs = "./datasets/Mornington/features/rule.lots.nph.csv"
             rules_lot_ph_cvs = "./datasets/Mornington/features/rule.lots.ph.csv"
-        
-        
-        
+                
         self.weather_csv = weather_csv
         self.slot_poi_csv = slot_poi_csv
         self.lot_poi_csv = lot_poi_csv
@@ -57,7 +59,8 @@ class FeatureConvertor():
         self.df_rules_hp = None
         self.df_rules_lot_nhp = None
         self.df_rules_lot_hp = None
-        #print("xxx weather "+weather_csv)
+        
+        self.START_DATE = self.getWeatherDatasetStartDate()
 
 #         self.df_weather = pd.read_csv(weather_csv,index_col=0,parse_dates=True)
 #         self.df_slot_poi = pd.read_csv(slot_poi_csv)
@@ -65,34 +68,45 @@ class FeatureConvertor():
 #         self.df_rules_hp = pd.read_csv(rules_ph_cvs)
     
     def getFeatureList(self):
-        return self.weatherFs + self.slot_poiFs + self.slot_ruleFs + ["Day","Hour","Minute","DayOfWeek","DayOfMonth","DayOfYear"]
+        return self.weatherFs + self.slot_poiFs + self.slot_ruleFs + ["Day","Hour","Minute","DayOfWeek","DayOfMonth","Month","DayOfYear"]
     
-    def getWeatherYearSerial(self, interval):
+
+    def loadWeatherDataset(self):
         if self.df_weather is None:
             mms = MinMaxScaler()
-            print(self.weather_csv)
+            logger.debug("loadWeatherDataset "+self.weather_csv)
             self.df_weather = pd.read_csv(self.weather_csv,index_col=0,parse_dates=True)
+            logger.debug(self.df_weather.isna().any())
             self.df_weather[self.weatherFs] = mms.fit_transform(self.df_weather[self.weatherFs])
+            logger.debug(self.df_weather.isna().any())
+    
 
+    def getWeatherDatasetStartDate(self):
+        self.loadWeatherDataset()
+        return arrow.get(self.df_weather.index[0])
+
+
+    def getWeatherYearSerial(self, interval):
+        self.loadWeatherDataset()
         return self.df_weather.resample(str(interval)+"T").bfill()
     
-    def getPOISerial(self,id,dateSerial,interval,type = "lot"):
-        if type == "slot" and self.df_slot_poi is None:
+    def getPOISerial(self,id,dateSerial,interval,paType = "lot"):
+        if paType == "slot" and self.df_slot_poi is None:
             mms = MinMaxScaler()
             self.df_slot_poi = pd.read_csv(self.slot_poi_csv)
             self.df_slot_poi[self.slot_poiFs] = mms.fit_transform(self.df_slot_poi[self.slot_poiFs])
-        elif type == "lot" and self.df_lot_poi is None:
+        elif paType == "lot" and self.df_lot_poi is None:
             mms = MinMaxScaler()
             self.df_lot_poi = pd.read_csv(self.lot_poi_csv)
             self.df_lot_poi[self.slot_poiFs] = mms.fit_transform(self.df_lot_poi[self.slot_poiFs])
         
         df1 = None
-        if type == "slot":
+        if paType == "slot":
             if "StreetMarker" in self.df_slot_poi.columns.values:
                 df1 = self.df_slot_poi[self.df_slot_poi["StreetMarker"] == id]
             else:
                 df1 = self.df_slot_poi[self.df_slot_poi["id"] == id]
-        elif type == "lot":
+        elif paType == "lot":
             if "LotId" in self.df_lot_poi.columns.values:
                 df1 = self.df_lot_poi[self.df_lot_poi["LotId"] == int(id)]
             else:
@@ -100,13 +114,13 @@ class FeatureConvertor():
 
         df1['day'] = df1["datetime"].str[:10]
         df1['time'] = df1["datetime"].str[11:]
-        #print(df1.head())
+        logger.debug(df1.head())
         df1["wd"] = df1.apply(lambda row: arrow.get(row["datetime"]).format("d"), axis=1)
 
         #del df1["datetime"]
-        if type == "slot":
+        if paType == "slot":
             del df1["StreetMarker"]
-        elif type == "lot":
+        elif paType == "lot":
             del df1["LotId"]
 
         arr = []
@@ -122,7 +136,7 @@ class FeatureConvertor():
         #end = "2018-01-01 00:00"
         end = arrow.get(dateSerial[len(dateSerial) - 1] + " 23:59").shift(seconds =+ 60)
         #end = arrow.get(dateSerial[len(dateSerial) - 1] + " 23:59:00")
-        #print("end "+end.format("YYYY-MM-DD HH:mm"))
+        logger.debug("end "+end.format("YYYY-MM-DD HH:mm"))
         dx = df1[(df1["wd"] == end.format("d")) & (df1["time"] == end.format("HH:mm"))]
         dx["datetime"] = end.format("YYYY-MM-DD HH:mm")
         del dx["day"]
@@ -139,8 +153,8 @@ class FeatureConvertor():
         return outdf.resample(str(interval)+'T').bfill()
     
     
-    def getRuleSerial(self, id,dateSerial,interval,onHoliday=False,type = "lot"):
-        if type == "slot":
+    def getRuleSerial(self, id,dateSerial,interval,onHoliday=False,paType = "lot"):
+        if paType == "slot":
             if self.df_rules_nhp is None:
                 mms = MinMaxScaler()
                 self.df_rules_nhp = pd.read_csv(self.rules_nph_cvs)
@@ -149,7 +163,7 @@ class FeatureConvertor():
                 mms = MinMaxScaler()
                 self.df_rules_hp = pd.read_csv(self.rules_ph_cvs)
                 self.df_rules_hp[self.slot_ruleFs] = mms.fit_transform(self.df_rules_hp[self.slot_ruleFs])
-        elif type == "lot":
+        elif paType == "lot":
             if self.df_rules_lot_nhp is None:
                 mms = MinMaxScaler()
                 self.df_rules_lot_nhp = pd.read_csv(self.rules_lot_nph_cvs)
@@ -161,14 +175,14 @@ class FeatureConvertor():
         
 
         df1 = None
-        #print(self.df_rules_lot_nhp.head())
+        logger.debug(self.df_rules_lot_nhp.head())
         
-        if type == "slot":
+        if paType == "slot":
             if onHoliday:
                 df1 = self.df_rules_hp[self.df_rules_hp["StreetMarker"] == id]
             else:
                 df1 = self.df_rules_nhp[self.df_rules_nhp["StreetMarker"] == id]
-        elif type == "lot":
+        elif paType == "lot":
             if onHoliday:
                 df1 = self.df_rules_lot_hp[self.df_rules_lot_hp["LotId"] == int(id)]
             else:
@@ -177,13 +191,13 @@ class FeatureConvertor():
 
         df1['day'] = df1["datetime"].str[:10]
         df1['time'] = df1["datetime"].str[11:]
-        #print(df1.head())
+        logger.debug(df1.head())
         df1["wd"] = df1.apply(lambda row: arrow.get(row["datetime"]).format("d"), axis=1)
 
         #del df1["datetime"]
-        if type == "slot":
+        if paType == "slot":
             del df1["StreetMarker"]
-        elif type == "lot":
+        elif paType == "lot":
             del df1["LotId"]
 
         hdf = None
@@ -214,7 +228,7 @@ class FeatureConvertor():
         #end = "2018-01-01 00:00"
         end = arrow.get(dateSerial[len(dateSerial) - 1] + " 23:59").shift(seconds =+ 60)
         #end = arrow.get(dateSerial[len(dateSerial) - 1] + " 23:59:00")
-        #print("end "+end.format("YYYY-MM-DD HH:mm"))
+        logger.debug("end "+end.format("YYYY-MM-DD HH:mm"))
         dx = df1[(df1["wd"] == end.format("d")) & (df1["time"] == end.format("HH:mm"))]
         dx["datetime"] = end.format("YYYY-MM-DD HH:mm")
         del dx["day"]
@@ -232,18 +246,21 @@ class FeatureConvertor():
         #return outdf.resample('T')
 
         outdf = outdf.resample(str(interval)+'T').interpolate(method='linear')
-        if type == "slot":
+        if paType == "slot":
             outdf.loc[outdf["availability"] < 1.0, 'duration'] = 0.0
         outdf.loc[outdf["availability"] < 1.0, 'availability'] = 0.0
         return outdf
     
     
-    def getFeatures(self,id,featureNames,startDay,endDay,interval,onHoliday=False,type = "lot"):
-        START_DATE_OF_YEAR = "01/01/2017"
-        END_DATE_OF_YEAR = "12/31/2017"
-        
-        startIndex = (arrow.get(startDay, DATE_FORMAT) - arrow.get(START_DATE_OF_YEAR, DATE_FORMAT)).days * 60 * 24 // interval
-        endIndex = (arrow.get(endDay, DATE_FORMAT) - arrow.get(START_DATE_OF_YEAR, DATE_FORMAT)).days * 60 * 24 // interval +1
+    def getFeatures(self,id,featureNames,startDay,endDay,interval,onHoliday=False,paType = "lot"):
+        logger.debug(self.START_DATE)
+        logger.debug(arrow.get(startDay, DATE_FORMAT))
+        logger.debug(arrow.get(endDay, DATE_FORMAT))
+        logger.debug("startDay "+startDay + " endDay "+endDay)
+        logger.debug((arrow.get(startDay, DATE_FORMAT) - self.START_DATE).days * 60 * 24)
+        logger.debug(interval)
+        startIndex = (arrow.get(startDay, DATE_FORMAT) - self.START_DATE).days * 60 * 24 // interval
+        endIndex = (arrow.get(endDay, DATE_FORMAT) - self.START_DATE).days * 60 * 24 // interval
         
         ds = [ arrow.get(startDay, DATE_FORMAT).shift(days=+x).format("YYYY-MM-DD") for x in np.arange((arrow.get(endDay, DATE_FORMAT) - arrow.get(startDay, DATE_FORMAT)).days).tolist()]
         
@@ -251,19 +268,20 @@ class FeatureConvertor():
         spoiDf = None
         sruleDf = None
         
-        #print("ds:"+str(ds))
-        _type = type
+        logger.debug("ds:"+str(ds))
+        _type = paType
 
         if any(item in self.weatherFs for item in featureNames):
+            logger.debug("startIndex:{} endIndex:{}".format(startIndex,endIndex))
             wDf = self.getWeatherYearSerial(interval)[startIndex:endIndex]
         
         if any(item in self.slot_poiFs for item in featureNames):
-            spoiDf = self.getPOISerial(id,ds,interval,type = _type)
+            spoiDf = self.getPOISerial(id,ds,interval,paType = _type)
             
         if any(item in self.slot_ruleFs for item in featureNames):
-            sruleDf = self.getRuleSerial(id,ds,interval,onHoliday,type = _type)
+            sruleDf = self.getRuleSerial(id,ds,interval,onHoliday,paType = _type)
         
-        #print(str(wDf.shape)+" "+str(spoiDf.shape)+" "+str(sruleDf.shape))
+        logger.debug(str(wDf.shape)+" "+str(spoiDf.shape)+" "+str(sruleDf.shape))
         
         outputDf = pd.DataFrame(columns = featureNames)
         
@@ -274,6 +292,7 @@ class FeatureConvertor():
                 outputDf[fname] = spoiDf[fname]
             if fname in self.slot_ruleFs:
                 outputDf[fname] = sruleDf[fname]
+
         #outputDf.drop(outputDf[:-1])
         
         if "Day" in featureNames:
@@ -282,12 +301,15 @@ class FeatureConvertor():
             outputDf["Hour"] = outputDf.apply(lambda row: int(arrow.get(row.name).format("H"))/24 ,axis=1)
         if "Minute" in featureNames:
             outputDf["Minute"] = outputDf.apply(lambda row: int(arrow.get(row.name).format("m"))/59 ,axis=1)
-        if "WeekDay" in featureNames:
-            outputDf["WeekDay"] = outputDf.apply(lambda row: int(arrow.get(row.name).format("d"))/7 ,axis=1)
+        if "DayOfWeek" in featureNames:
+            outputDf["DayOfWeek"] = outputDf.apply(lambda row: int(arrow.get(row.name).format("d"))/7 ,axis=1)
+        if "DayOfMonth" in featureNames:
+            outputDf["DayOfMonth"] = outputDf.apply(lambda row: int(arrow.get(row.name).format("D"))/31 ,axis=1)
         if "Month" in featureNames:
             outputDf["Month"] = outputDf.apply(lambda row: int(arrow.get(row.name).format("M"))/12 ,axis=1)
         if "DayOfYear" in featureNames:
             outputDf["DayOfYear"] = outputDf.apply(lambda row: int(arrow.get(row.name).format("DDD"))/365 ,axis=1)
             
-        
-        return outputDf[:-1]
+        logger.debug(outputDf.isna().any())
+        #print(outputDf)
+        return outputDf
