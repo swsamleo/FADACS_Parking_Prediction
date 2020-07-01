@@ -144,7 +144,7 @@ def test(data):
 
         pred_y = gbm.predict(data["x"])
 
-        metrics = ModelUtils.getMetrics(data["y"].squeeze(), pred_y)
+        metrics = ModelUtils.getMetrics(data["y"].squeeze(), pred_y,data["y_train"])
 
         end = time.time()
         print(data["loghead"] + data["col"] + (' lightGBM Test MAE: %.2f' %

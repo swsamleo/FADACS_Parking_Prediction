@@ -1,8 +1,13 @@
+from sklearn.metrics import mean_squared_error
+from scipy import stats
 import pandas as pd
 import arrow
 import os
 import random
 import numpy as np
+from tqdm import tqdm
+import math
+
 from TLogger import *
 
 logger = Logger("ParkingDataConvertor")
@@ -11,7 +16,7 @@ logger.setLevel(logging.INFO)
 
 MAXPARKING_NUM = 38
 
-lotsDF = pd.read_csv("./datasets/MelbCity/parking/StreetMarker_Lot.csv")
+MelbLotsDF = pd.read_csv("./datasets/MelbCity/parking/StreetMarker_Lot.csv")
 mpslotsDF = pd.read_csv("./datasets/Mornington/DeviceId_Lot.csv")
 mpsSectorsDF = pd.read_csv("./datasets/Mornington/parking/sectors/sectorCounts.csv")
 
@@ -25,6 +30,11 @@ def getCSVFileNames(dir):
         if filename.endswith(".csv"):
             files.append(filename[:-4])
     return files
+
+def getDateOffsetIndex(day,interval,start = arrow.get("01/01/2017"+" 00:00","MM/DD/YYYY HH:mm")):
+    dis = (arrow.get(day+" 00:00","MM/DD/YYYY HH:mm") - start).days*24*60//interval
+    logger.debug("_getDateOffsetIndex start:{} day:{} interval:{} -> {}".format(start,day,interval,dis))
+    return dis
 
 def getALLParkingAeraArray(interval,paType = "lot" ,location = "MelbCity",number = None):
     if location == "MelbCity":
@@ -89,15 +99,14 @@ def getMorningtonParkingStartDate(interval,paType = "lot"):
 
 
 def getParkingEventsArray(id,interval,paType = "lot" ,location = "MelbCity",start = None,end = None, output = "list",normalize = False):
-    df = loadParkingDatasets(interval,location,paType = paType,id = id)
-    
     logger.debug("getParkingEventsArray [{}] for {}, interval is {}m".format(location,id,interval))
-    
+    df = loadParkingDatasets(interval,location,paType = paType,id = id)
+
     if location == "MelbCity":
         if normalize:
             df[id] = df[id]/MAXPARKING_NUM
         else:
-            lot = lotsDF[lotsDF["LotId"] == int(id)]
+            lot = MelbLotsDF[MelbLotsDF["LotId"] == int(id)]
             df[id] = df[id]/lot.shape[0]
 
         if start is not None and end is not None:
@@ -114,22 +123,156 @@ def getParkingEventsArray(id,interval,paType = "lot" ,location = "MelbCity",star
     elif location == "Mornington":
         
         df["id"] = df["id"].astype(str)
-        
-        dfx = df[df["id"] == str(id)]
+        logger.debug("getParkingEventsArray id:{} start:{} end:{}".format(str(int(id)),start,end))
+        #print(df.head())
+        dfx = df[df["id"] == str(int(id))]
         del dfx["id"]
+
+        logger.debug("getParkingEventsArray dfx:{}".format(dfx.shape))
+        logger.debug("getParkingEventsArray dfx:{}".format(dfx))
         
         dd = None
         if paType == "lot":
-            num = mpslotsDF[mpslotsDF["LotId"] == id].shape[0]
-            dd = dfx.values[0]/num
+            num = mpslotsDF[mpslotsDF["LotId"] == int(id)].shape[0]
+            #print(mpslotsDF["LotId"].unique())
+            if dfx.shape[0] == 1:
+                dd = dfx.values[0]/num
+            else:
+                dd = dfx.values/num
         elif paType == "scetor":
             num = mpsSectorsDF[mpsSectorsDF["sector"] == id]["count"].values[0]
-            dd = dfx.values[0]/num
+            if dfx.shape[0] == 1:
+                dd = dfx.values[0]/num
+            else:
+                dd = dfx.values/num
         else:
-            dd = dfx
+            if dfx.shape[0] == 1:
+                dd = dfx.values[0]
+            else:
+                dd = dfx.values
         
         if start is not None and end is not None:
             logger.debug("getParkingEventsArray for Mornington start:{} end:{}".format(start,end))
             return dd[start:end]
         else:
             return dd
+        
+
+# approximate radius of earth in km
+def getDistance(_lat1,_lon1,_lat2,_lon2):
+    R = 6373.0
+
+    lat1 = math.radians(_lat1)
+    lon1 = math.radians(_lon1)
+    lat2 = math.radians(_lat2)
+    lon2 = math.radians(_lon2)
+
+    dlon = lon2 - lon1
+    dlat = lat2 - lat1
+
+    a = math.sin(dlat / 2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+    distance = R * c
+    return distance
+
+
+def getDistanceMatrix(lots,outputFile,location="MelbCity"):
+    lotsLocation = pd.read_csv("./datasets/"+location+"/parking/LotsLocation.csv")
+
+    ll = []
+    for l in lots:
+        L1d = lotsLocation[lotsLocation["LotId"] == int(l)].values[0]
+        lr = []
+        for n in lots:
+            L2d = lotsLocation[lotsLocation["LotId"] == int(n)].values[0]
+            D12 = getDistance(L1d[1],L1d[2],L2d[1],L2d[2])
+            lr.append(D12)
+        ll.append(lr)
+    ll = np.array(ll)
+    logger.debug(ll.shape)
+    
+    mms = MinMaxScaler()
+    llx = mms.fit_transform(ll)
+    llx
+    np.save(outputFile, llx)
+    
+    
+def genParkingDataMedian(interval = 5,location = "MelbCity",paType = "lot",number = None,metric = "median",minSlots = 3):
+    melbLots = getALLParkingAeraArray(interval,location = location,number = number,paType = paType)
+
+    pls = []
+    lotsNum = 0
+    for i in range(len(melbLots)):
+        if (location == "MelbCity" and MelbLotsDF[MelbLotsDF["LotId"] == int(melbLots[i])].shape[0]  >=  minSlots ) or (location == "Mornington" and mpslotsDF[mpslotsDF["LotId"] == int(melbLots[i])].shape[0]  >=  minSlots ):
+            p = getParkingEventsArray(melbLots[i],interval,output = "numpy",location = location)
+            print("genParkingDataMedian for {}/{}s/{}m {}/{} [{}] ->{}".format(location,paType,interval,i,lotsNum,melbLots[i],p.shape))
+            pls = np.concatenate((pls,p),axis=0)
+            lotsNum = lotsNum+1
+
+    pls = pls.reshape(lotsNum,pls.shape[0]//lotsNum)
+    
+    median = []
+    for i in range(pls.shape[1]):
+        if metric == "median":
+            median.append(np.median(pls[:,i]))
+        elif metric == "mode":
+            median.append(stats.mode(pls[:,i]))
+
+    np.save("./datasets/"+location+"/parking/"+paType+"s/"+str(interval)+"m-"+metric+"-"+str(minSlots)+".npy",median)
+
+    
+def getMedian(start,end,interval = 5,location = "MelbCity",metric = "median",minSlots = 3,paType = "lot"):
+    startIndex = 0
+    endIndex = 0
+    if location == "MelbCity":
+        startIndex = getDateOffsetIndex(start,interval)
+        endIndex = getDateOffsetIndex(end,interval)
+    elif location == "Mornington":
+        startIndex = getDateOffsetIndex(start,interval,start = getMorningtonParkingStartDate(interval,paType = paType))
+        endIndex = getDateOffsetIndex(end,interval,start = getMorningtonParkingStartDate(interval,paType = paType))
+
+    median = np.load("./datasets/"+location+"/parking/lots/"+str(interval)+"m-"+metric+"-"+str(minSlots)+".npy",allow_pickle=True)
+
+    if len(median.shape) == 3:
+        median = np.delete(median,0,1)
+        median = median.reshape(median.shape[0])
+
+    return median[startIndex:endIndex]
+
+
+def getSimilarLots(start,end,interval = 5,location = "MelbCity",number = None,metric = "median",minSlots = 3, median = None,paType = "lot"):
+    startIndex = 0
+    endIndex = 0
+    if location == "MelbCity":
+        startIndex = getDateOffsetIndex(start,interval)
+        endIndex = getDateOffsetIndex(end,interval)
+    elif location == "Mornington":
+        startIndex = getDateOffsetIndex(start,interval,start = getMorningtonParkingStartDate(interval,paType = paType))
+        endIndex = getDateOffsetIndex(end,interval,start = getMorningtonParkingStartDate(interval,paType = paType))
+
+    #days = (endIndex - startIndex)//(24*60//interval)
+
+    if median is None:
+        median = getMedian(startIndex,endIndex,interval = interval,location = location,metric = metric,minSlots = minSlots)
+    
+    print(median.shape)
+
+    melbLots = getALLParkingAeraArray(interval,location = location)
+    
+    pls = []
+    lotsNum = len(melbLots)
+    
+    for i in range(len(melbLots)):
+        if (location == "MelbCity" and MelbLotsDF[MelbLotsDF["LotId"] == int(melbLots[i])].shape[0]  >=  minSlots ) or (location == "Mornington" and mpslotsDF[mpslotsDF["LotId"] == int(melbLots[i])].shape[0]  >=  minSlots ):
+            print("getSimilarLots {}/{} {}".format(i,lotsNum,melbLots[i]))
+            d = mean_squared_error(median, getParkingEventsArray(melbLots[i],interval,start = startIndex,end = endIndex,output = "numpy",location = location))
+            pls.append([melbLots[i],d])
+    
+    pls = np.array(pls)
+    pls.sort(axis=0)
+
+    if number is not None:
+        pls = pls[:number]
+        
+    return pls[:,0].tolist()

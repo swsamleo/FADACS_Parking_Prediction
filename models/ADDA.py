@@ -1,6 +1,7 @@
 """Discriminator model for ADDA."""
 import os
 import torch
+import numpy as np
 from torch import nn
 import torch.nn.functional as F
 import torch.optim as optim
@@ -10,213 +11,13 @@ from torch.autograd import Variable
 import time
 
 from . import ADDA_params as params
+from .adda_models.utils import *
 
-def make_variable(tensor, volatile=False):
-    """Convert Tensor to Variable."""
-    if torch.cuda.is_available():
-        tensor = tensor.cuda()
-    return Variable(tensor, volatile=volatile)
+from .adda_models.MPL import *
+from .adda_models.ConvLSTM import *
 
-def make_cuda(tensor):
-    """Use CUDA if it's available."""
-    if torch.cuda.is_available():
-        tensor = tensor.cuda()
-    return tensor
+from . import ModelUtils
 
-
-def denormalize(x, std, mean):
-    """Invert normalization, and then convert array into image."""
-    out = x * std + mean
-    return out.clamp(0, 1)
-
-
-def init_weights(layer):
-    """Init weights for layers w.r.t. the original paper."""
-    layer_name = layer.__class__.__name__
-    if layer_name.find("Conv") != -1:
-        layer.weight.data.normal_(0.0, 0.02)
-    elif layer_name.find("BatchNorm") != -1:
-        layer.weight.data.normal_(1.0, 0.02)
-        layer.bias.data.fill_(0)
-
-
-def init_random_seed(manual_seed):
-    """Init random seed."""
-    seed = None
-    if manual_seed is None:
-        seed = random.randint(1, 10000)
-    else:
-        seed = manual_seed
-    print("use random seed: {}".format(seed))
-    random.seed(seed)
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)
-
-
-def init_model(net, restore):
-    """Init models with cuda and weights."""
-    # init weights of model
-    net.apply(init_weights)
-
-    # restore model weights
-    if restore is not None and os.path.exists(restore):
-        net.load_state_dict(torch.load(restore))
-        net.restored = True
-        print("Restore model from: {}".format(os.path.abspath(restore)))
-
-    # check if cuda is available
-    if torch.cuda.is_available():
-        cudnn.benchmark = True
-        net.cuda()
-
-    return net
-
-
-def save_model(net, filename):
-    """Save trained model."""
-    if not os.path.exists(params.model_root):
-        os.makedirs(params.model_root)
-    torch.save(net.state_dict(),
-               os.path.join(params.model_root, filename))
-    print("save pretrained model to: {}".format(os.path.join(params.model_root,
-                                                             filename)))
-
-class Discriminator(nn.Module):
-    """Discriminator model for source domain."""
-
-    def __init__(self, input_dims, hidden_dims, output_dims):
-        """Init discriminator."""
-        super(Discriminator, self).__init__()
-
-        self.restored = False
-
-        self.layer = nn.Sequential(
-            nn.Linear(input_dims, hidden_dims),
-            nn.ReLU(),
-            nn.Linear(hidden_dims, hidden_dims),
-            nn.ReLU(),
-            nn.Linear(hidden_dims, output_dims),
-            nn.LogSoftmax()
-        )
-
-    def forward(self, input):
-        """Forward the discriminator."""
-        out = self.layer(input)
-        return out
-
-
-class DiscriminatorMLP(nn.Module):
-    """Discriminator model for source domain."""
-
-    def __init__(self, input_dims, hidden_dims, output_dims):
-        """Init discriminator."""
-        super(DiscriminatorMLP, self).__init__()
-
-        self.restored = False
-
-        self.layer = nn.Sequential(
-            nn.Linear(input_dims, hidden_dims),
-            nn.ReLU(),
-            nn.Linear(hidden_dims, hidden_dims),
-            nn.ReLU(),
-            nn.Linear(hidden_dims, output_dims),
-            nn.LogSoftmax()
-        )
-
-    def forward(self, input):
-        """Forward the discriminator."""
-        out = self.layer(input)
-        return out
-    
-"""LeNet model for ADDA."""
-
-class LeNetEncoder(nn.Module):
-    """LeNet encoder model for ADDA."""
-
-    def __init__(self):
-        """Init LeNet encoder."""
-        super(LeNetEncoder, self).__init__()
-
-        self.restored = False
-
-        self.encoder = nn.Sequential(
-            # 1st conv layer
-            # input [1 x 28 x 28]
-            # output [20 x 12 x 12]
-            nn.Conv2d(1, 20, kernel_size=5),
-            nn.MaxPool2d(kernel_size=2),
-            nn.ReLU(),
-            # 2nd conv layer
-            # input [20 x 12 x 12]
-            # output [50 x 4 x 4]
-            nn.Conv2d(20, 50, kernel_size=5),
-            nn.Dropout2d(),
-            nn.MaxPool2d(kernel_size=2),
-            nn.ReLU()
-        )
-        self.fc1 = nn.Linear(50 * 4 * 4, 500)
-
-    def forward(self, input):
-        """Forward the LeNet."""
-        conv_out = self.encoder(input)
-        feat = self.fc1(conv_out.view(-1, 50 * 4 * 4))
-        return feat
-
-
-class LeNetClassifier(nn.Module):
-    """LeNet classifier model for ADDA."""
-
-    def __init__(self):
-        """Init LeNet encoder."""
-        super(LeNetClassifier, self).__init__()
-        self.fc2 = nn.Linear(500, 10)
-
-    def forward(self, feat):
-        """Forward the LeNet classifier."""
-        out = F.dropout(F.relu(feat), training=self.training)
-        out = self.fc2(out)
-        return out
-
-
-class LeNetEncoderMLP(nn.Module):
-    """LeNet encoder model for ADDA."""
-
-    def __init__(self, input_dims, hidden_dims, output_dims):
-        """Init LeNet encoder."""
-        super(LeNetEncoderMLP, self).__init__()
-
-        self.restored = False
-
-        self.encoder = nn.Sequential(
-            nn.Linear(input_dims, hidden_dims),
-            nn.ReLU(),
-            nn.Linear(hidden_dims, hidden_dims),
-            nn.ReLU(),
-            nn.Linear(hidden_dims, output_dims),
-        )
-
-    def forward(self, input):
-        """Forward the LeNet."""
-        feat = self.encoder(input.view(input.size(0), -1))
-        return feat
-
-
-class LeNetRegressorMLP(nn.Module):
-    """LeNet classifier model for ADDA."""
-
-    def __init__(self, input_dims):
-        """Init LeNet encoder."""
-        super(LeNetRegressorMLP, self).__init__()
-        self.fc2 = nn.Linear(input_dims, 1)
-        self.restored = False
-
-    def forward(self, feat):
-        """Forward the LeNet classifier."""
-        out = F.dropout(F.relu(feat), training=self.training)
-        out = F.sigmoid(self.fc2(out))
-        return out
-    
 #################
 
 def train_tgt(src_encoder, tgt_encoder, critic,
@@ -515,12 +316,12 @@ def train_src(encoder, classifier, data_loader):
 
         # save model parameters
         if ((epoch + 1) % params.save_step_pre == 0):
-            save_model(encoder, params.tIndex+"source-encoder-{}.pt".format(epoch + 1))
-            save_model(classifier, params.tIndex+"source-classifier-{}.pt".format(epoch + 1))
+            save_model(encoder, params.tIndex+"source-encoder-{}.pt".format(epoch + 1),params)
+            save_model(classifier, params.tIndex+"source-classifier-{}.pt".format(epoch + 1),params)
 
     # # save final model
-    save_model(encoder, params.tIndex+"source-encoder-final.pt")
-    save_model(classifier, params.tIndex+"source-classifier-final.pt")
+    save_model(encoder, params.tIndex+"source-encoder-final.pt",params)
+    save_model(classifier, params.tIndex+"source-classifier-final.pt",params)
 
     return encoder, classifier
 
@@ -544,15 +345,15 @@ def eval_src(encoder, classifier, data_loader):
         labels = make_variable(labels)
 
         preds = classifier(encoder(images))
-        loss += criterion(preds, labels).item()
+        #loss += criterion(preds, labels).item()
 
         pred_cls = preds.data.max(1)[1]
         acc += pred_cls.eq(labels.data).cpu().sum()
 
-    loss /= len(data_loader)
+    #loss /= len(data_loader)
     acc /= len(data_loader.dataset)
 
-    print("Avg Loss = {}, Avg Accuracy = {:2%}".format(loss, acc))
+    print("Avg Accuracy = {:2%}".format( acc))
 
 
 def train_src_mlp(encoder, classifier, data_loader):
@@ -608,13 +409,13 @@ def train_src_mlp(encoder, classifier, data_loader):
 
         # save model parameters
         if ((epoch + 1) % params.save_step_pre == 0):
-            save_model(encoder, params.tIndex+"source-encoder-{}.pt".format(epoch + 1))
+            save_model(encoder, params.tIndex+"source-encoder-{}.pt".format(epoch + 1),params)
             save_model(
-                classifier, params.tIndex+"source-classifier-{}.pt".format(epoch + 1))
+                classifier, params.tIndex+"source-classifier-{}.pt".format(epoch + 1),params)
 
     # # save final model
-    save_model(encoder, params.tIndex+params.src_encoder_restore)
-    save_model(classifier, params.tIndex+params.src_classifier_restore)
+    save_model(encoder, params.tIndex+params.src_encoder_restore,params)
+    save_model(classifier, params.tIndex+params.src_classifier_restore,params)
 
     return encoder, classifier
 
@@ -681,7 +482,7 @@ def eval_tgt(encoder, classifier, data_loader):
     print("Avg Loss = {}, Avg Accuracy = {:2%}".format(loss, acc))
 
 
-def eval_tgt_mlp(encoder, classifier, data_loader):
+def eval_tgt_mlp(encoder, classifier, tgt_data_loader,y_train):
     """Evaluation for target encoder by source classifier on target dataset."""
     # set eval state for Dropout and BN layers
     encoder.eval()
@@ -690,27 +491,44 @@ def eval_tgt_mlp(encoder, classifier, data_loader):
     # init loss and accuracy
     loss = 0
     mae_loss = 0
+    rmse_loss = 0
+    mape_loss = 0
+    mase  = 0
 
     # set loss function
     criterion = nn.MSELoss()
     mae_crit1 = nn.L1Loss()
+    rmse_criterion = RMSELoss()
 
     # evaluate network
-    for (datas, labels) in data_loader:
+    for (datas, labels) in tgt_data_loader:
         datas = make_variable(datas, volatile=True)
         labels = make_variable(labels).squeeze_()
+
+        #print("datas.shape:"+str(datas.shape))
+        #print("labels.shape:"+str(labels.shape))
 
         preds = classifier(encoder(datas))
         loss += criterion(preds, labels).item()
         mae_loss += mae_crit1(preds, labels).item()
+        rmse_loss += rmse_criterion(preds, labels).item()
+        mape_loss += MAPELoss(preds, labels)
 
-    loss /= len(data_loader)
-    mae_loss = loss
+        y_true = labels.cpu().detach().numpy()
+        y_pred = preds.cpu().detach().numpy()
+        
+        mase += ModelUtils.mean_absolut_scaled_error(y_train,y_true,y_pred)
+
+    loss /= len(tgt_data_loader)
+    #mae_loss = loss
     loss = loss**(0.5)
-    #mae_loss /= len(data_loader)
+    mae_loss /= len(tgt_data_loader)
+    rmse_loss /= len(tgt_data_loader)
+    mape_loss /= len(tgt_data_loader)
+    mase /= len(tgt_data_loader)
 
-    print("RMSE = {}, MAE = {}".format(loss, mae_loss))
-    return loss, mae_loss
+    print("RMSE = {}, MAE = {} MAPE = {} MASE = {}".format(rmse_loss, mae_loss, mape_loss, mase))
+    return rmse_loss, mae_loss, mape_loss, mase
 
 def updateParams(parameters):
     if "dataset_mean_value" in parameters: 
@@ -757,9 +575,55 @@ def train(data):
     
     params.tIndex = data["col"]+"_"
     params.model_root = data["filepath"]
+    params.baseUnit = data["baseUnit"]
+    params.featureNum = data["featureNum"]
     
     if data["parameters"] is not None:
-        updateParams(data["parameters"] )
+        parameters = data["parameters"]
+        print(data["parameters"])
+
+        if "dataset_mean_value" in parameters: 
+            params.dataset_mean_value = parameters["dataset_mean_value"]
+            params.dataset_mean = (params.dataset_mean_value, params.dataset_mean_value, params.dataset_mean_value)
+            
+        if "dataset_std_value" in parameters: 
+            params.dataset_std_value = parameters["dataset_std_value"]
+            params.dataset_std = (params.dataset_std_value, params.dataset_std_value, params.dataset_std_value)
+
+        if "src_encoder_restore" in parameters: params.src_encoder_restore = parameters["src_encoder_restore"]
+        if "src_regressor_restore" in parameters: params.src_regressor_restore = parameters["src_regressor_restore"]
+        if "tgt_encoder_restore" in parameters: params.tgt_encoder_restore = parameters["tgt_encoder_restore"]
+        if "d_model_restore" in parameters: params.d_model_restore = parameters["d_model_restore"]
+        if "src_classifier_restore" in parameters: params.src_classifier_restore = parameters["src_classifier_restore"]
+
+        if "src_model_trained" in parameters: params.src_model_trained = parameters["src_model_trained"]
+        if "e_input_dims" in parameters: params.e_input_dims = parameters["e_input_dims"]
+        if "e_hidden_dims" in parameters: params.e_hidden_dims = parameters["e_hidden_dims"]
+        if "e_output_dims" in parameters: params.e_output_dims = parameters["e_output_dims"]
+        if "r_input_dims" in parameters: 
+            params.r_input_dims = parameters["r_input_dims"]
+            print("updated r_input_dims:{}".format(params.r_input_dims))
+
+        if "tgt_model_trained" in parameters: params.tgt_model_trained = parameters["tgt_model_trained"]
+        if "d_input_dims" in parameters: params.d_input_dims = parameters["d_input_dims"]
+        if "d_hidden_dims" in parameters: params.d_hidden_dims = parameters["d_hidden_dims"]
+        if "d_output_dims" in parameters: params.d_output_dims = parameters["d_output_dims"]
+        if "num_gpu" in parameters: params.num_gpu = parameters["num_gpu"]
+        if "num_epochs_pre" in parameters: params.num_epochs_pre = parameters["num_epochs_pre"]
+        if "log_step_pre" in parameters: params.log_step_pre = parameters["log_step_pre"]
+        if "eval_step_pre" in parameters: params.eval_step_pre = parameters["eval_step_pre"]
+        if "save_step_pre" in parameters: params.save_step_pre = parameters["save_step_pre"]
+        if "num_epochs" in parameters: params.num_epochs = parameters["num_epochs"]
+        if "log_step" in parameters: params.log_step = parameters["log_step"]
+        if "save_step" in parameters: params.save_step = parameters["save_step"]
+        if "manual_seed" in parameters: params.manual_seed = parameters["manual_seed"]
+        if "d_learning_rate" in parameters: params.d_learning_rate = parameters["d_learning_rate"]
+        if "c_learning_rate" in parameters: params.c_learning_rate = parameters["c_learning_rate"]
+        if "beta1" in parameters: params.beta1 = parameters["beta1"]
+        if "beta2" in parameters: params.beta2 = parameters["beta2"]
+
+        print("r_input_dims:{}".format(params.r_input_dims))
+        print("d_input_dims:{}".format(params.d_input_dims))
         
     # init random seed
     init_random_seed(params.manual_seed)
@@ -771,17 +635,39 @@ def train(data):
     src_data_loader_eval = data["dataloaders"]["srcTest"]
     tgt_data_loader_eval = data["dataloaders"]["tarTest"]
 
+    y_train = data["y_train"]
+
+    encoder = data["parameters"]["encoder"]
+
     # load models
-    src_encoder = init_model(net=LeNetEncoderMLP(input_dims=params.e_input_dims,
+
+    src_encoder = None
+    if encoder == "MLP":
+        src_encoder = init_model(net=LeNetEncoderMLP(input_dims=params.e_input_dims,
+                                                hidden_dims=params.e_hidden_dims,
+                                                output_dims=params.e_output_dims),
+                                restore=params.src_encoder_restore)
+        tgt_encoder = init_model(net=LeNetEncoderMLP(input_dims=params.e_input_dims,
                                             hidden_dims=params.e_hidden_dims,
                                             output_dims=params.e_output_dims),
-                             restore=params.src_encoder_restore)
+                                restore=params.tgt_encoder_restore)
+    elif encoder == "convLSTM":
+        src_encoder = init_model(net=LeNetEncoderConvLSTM(output_dims=params.e_output_dims,
+                                                            baseUnit = params.baseUnit ,
+                                                            featureNum = params.featureNum),
+                                restore=params.src_encoder_restore)
+        tgt_encoder = init_model(net=LeNetEncoderConvLSTM(output_dims=params.e_output_dims,
+                                                            baseUnit = params.baseUnit ,
+                                                            featureNum = params.featureNum),
+                                restore=params.tgt_encoder_restore)
+    else:
+        return
+
     src_regressor = init_model(net=LeNetRegressorMLP(input_dims=params.r_input_dims),
                                 restore=params.src_regressor_restore)
-    tgt_encoder = init_model(net=LeNetEncoderMLP(input_dims=params.e_input_dims,
-                                            hidden_dims=params.e_hidden_dims,
-                                            output_dims=params.e_output_dims),
-                             restore=params.tgt_encoder_restore)
+
+
+    
     critic = init_model(DiscriminatorMLP(input_dims=params.d_input_dims,
                                       hidden_dims=params.d_hidden_dims,
                                       output_dims=params.d_output_dims),
@@ -823,8 +709,8 @@ def train(data):
     # eval target encoder on test set of target dataset
     print("=== [{}] Evaluating regressor for encoded target domain ===".format(data["col"])+", spent: %.2fs" % (end - start))
     print(">>> source only <<<")
-    rmse,mae = eval_tgt_mlp(src_encoder, src_regressor, tgt_data_loader_eval)
+    rmse,mae,mape,mase = eval_tgt_mlp(src_encoder, src_regressor, tgt_data_loader_eval,y_train)
     print(">>> domain adaption <<<")
-    t_rmse,t_mae = eval_tgt_mlp(tgt_encoder, src_regressor, tgt_data_loader_eval)
+    t_rmse,t_mae,t_mape,t_mase = eval_tgt_mlp(tgt_encoder, src_regressor, tgt_data_loader_eval,y_train)
     
-    return {data["col"]:{"mae_src":mae,"rmse_src":rmse,"mae_tar":t_mae,"rmse_tar":t_rmse}}
+    return {data["col"]:{"mae_src":mae,"rmse_src":rmse,"mase_src":mase,"mae_tar":t_mae,"rmse_tar":t_rmse,"mase_tar":t_mase}}

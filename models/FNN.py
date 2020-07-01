@@ -9,6 +9,7 @@ from keras.optimizers import *
 from keras.callbacks import ModelCheckpoint, LearningRateScheduler
 from keras import backend as K
 import joblib
+import pickle
 
 from . import ModelUtils
 
@@ -38,6 +39,7 @@ def train(data):
     print("FNN Training [" + data["col"] + "] start!")
 
     modelFile = data["filepath"] + 'fnn_' + data["col"] + '.pkl'
+    historyFile = data["filepath"] + 'hist_' + data["col"] + '.pkl'
 
     start = time.time()
 
@@ -89,12 +91,16 @@ def train(data):
                           loss = loss,
                           activation = activation
                          )
-        model.fit(X_train, y_train,
+        history = model.fit(X_train, y_train,
                 batch_size=batch_size,
                 epochs=epochs,
                 verbose=verbose,
                 validation_data=(X_test, y_test))
+        
         joblib.dump(model, modelFile)
+        
+        with open(historyFile, 'wb') as file_pi:
+            pickle.dump(history.history, file_pi)
 
     end = time.time()
     print("FNN Training Done [" + data["col"] + "], spent: %.2fs" % (end - start))
@@ -146,7 +152,7 @@ def test(data):
                                      workers=workers, 
                                      use_multiprocessing=use_multiprocessing)
 
-        metrics = ModelUtils.getMetrics(y_test.squeeze(), pred_y)
+        metrics = ModelUtils.getMetrics(y_test.squeeze(), pred_y,data["y_train"])
         
         end = time.time()
         print(data["loghead"] + data["col"] + (' FNN Test MAE: %.2f' % metrics["mae"])+", spent: %.2fs" % (end - start))

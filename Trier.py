@@ -1,8 +1,11 @@
 from models import LightGBM as lgbm
 from models import FNN as fnn
 from models import LSTM as lstm
+from models import convLSTM as convlstm
 from models import DANN as dann
 from models import ADDA as adda
+from models import HA as ha
+from models import ARIMA as armia
 from models import ModelUtils
 
 import uuid
@@ -14,6 +17,7 @@ import numpy as np
 from multiprocessing import cpu_count
 from multiprocessing import Pool
 from tqdm import trange, tqdm
+import pandas as pd
 
 import FeatureConvertor as fc
 import ParkingDataConvertor as pdc
@@ -34,21 +38,15 @@ def _checkAndCreatDir(dirPath):
         logger.info("Directory "+dirPath+ " already exists")
 
 
-def _getDateOffsetIndex(day,interval,start = arrow.get("01/01/2017"+" 00:00","MM/DD/YYYY HH:mm")):
-    dis = (arrow.get(day+" 00:00","MM/DD/YYYY HH:mm") - start).days*24*60//interval
-    logger.debug("_getDateOffsetIndex start:{} day:{} interval:{} -> {}".format(start,day,interval,dis))
-    return dis
-
-
 def _getParkingIdDataset(id,interval,start, end,features, paType = "lot",location = "MelbCity"):
     startIndex = 0
     endIndex = 0
     if location == "MelbCity":
-        startIndex = _getDateOffsetIndex(start,interval)
-        endIndex = _getDateOffsetIndex(end,interval)
+        startIndex = pdc.getDateOffsetIndex(start,interval)
+        endIndex = pdc.getDateOffsetIndex(end,interval)
     elif location == "Mornington":
-        startIndex = _getDateOffsetIndex(start,interval,start = pdc.getMorningtonParkingStartDate(interval,paType = paType))
-        endIndex = _getDateOffsetIndex(end,interval,start = pdc.getMorningtonParkingStartDate(interval,paType = paType))
+        startIndex = pdc.getDateOffsetIndex(start,interval,start = pdc.getMorningtonParkingStartDate(interval,paType = paType))
+        endIndex = pdc.getDateOffsetIndex(end,interval,start = pdc.getMorningtonParkingStartDate(interval,paType = paType))
     
     _type = paType
     logger.debug("_getParkingIdDataset startIndex:{} endIndex:{} start:{} end:{}".format(startIndex,endIndex,start,end))
@@ -109,6 +107,17 @@ def _genXYDatasetByParkingIdDataset(parkingData,unit,yIndexes):
     return X,y
 
 
+def genSTDataset(lots,start,end,interval,features,outputfile,location = "MelbCity",paType = "lot"):
+    dd = np.array([])
+    for lot in lots:
+        pdd = _getParkingIdDataset(lot,interval,start, end,features, paType = "lot")
+        if dd.shape[0] == 0:
+            dd = pdd.reshape(-1,1,4)
+        else:
+            dd = np.concatenate((dd,pdd.reshape(-1,1,len(features)+1)),axis=1)
+    print(dd.shape)
+
+
 class Experiment:
     def __init__(self,*args, **kwargs):
         self.config = {
@@ -117,20 +126,25 @@ class Experiment:
                 "MelbCity" : {
                     "start" : "01/01/2017",
                     "end" : "01/05/2017",
-                    "testStart" : "02/02/2017",
-                    "testEnd" : "01/06/2017",
+                    #"testStart" : "02/02/2017",
+                    #"testEnd" : "01/06/2017",
                     "parkingIDs":[],
                     "number":None,
+                    "randomParkingIDs":False,
+                    "ParkingIDMetric":"median"
                 },
                 "Mornington" : {
                     "start" : "01/31/2020",
                     "end" : "02/07/2020",
-                    "testStart" : "02/010/2020",
-                    "testEnd" : "02/20/2020",
+                    #"testStart" : "02/010/2020",
+                    #"testEnd" : "02/20/2020",
                     "parkingIDs":[],
                     "number":None,
+                    "randomParkingIDs":False,
+                    "ParkingIDMetric":"median"
                 }
             },
+            "medianSource":None,
             "interval" : 1,
             "parkingType" : "lot",
             "features" : [],
@@ -141,10 +155,46 @@ class Experiment:
             "experiments":{},
             "results":{}
         }
+
+    def getParkingIds(self,location):
+        return self.config["locations"][location]["parkingIDs"];
+
+    def convertHADataset(self,location):
+
+        path = self.config["path"]+"/"+location
+        
+        xFile = path+'/x.npy'
+        yFile = path+'/y.npy'
+
+        ids = self.getParkingIds(location)
+        
+        x = np.load(xFile,allow_pickle=True)
+        y = np.load(yFile,allow_pickle=True)
+        
+        tx = x[:,:,0]
+        y = y.reshape(y.shape[0],y.shape[2])
+
+        
+        l = tx.shape[0]/len(ids)
+        
+        dx=pd.DataFrame(data=tx[0:,0:],index=[i for i in range(tx.shape[0])],columns=['t'+str(tx.shape[1] - i-1) for i in range(tx.shape[1])])
+        dy=pd.DataFrame(data=y[0:,0:],index=[i for i in range(tx.shape[0])],columns=['t'+str(i) for i in self.config["predictionOffests"]])
+        
+        dx["id"] = ""
+        dy["id"] = ""
+        
+        for index, id in enumerate(ids):
+            #print(str(index*l)+" -> " +str((index+1)*l ))
+            dx.iloc[int(index*l):int((index+1)*l )]["id"] = id
+            dy.iloc[int(index*l):int((index+1)*l )]["id"] = id
+        
+        return dx,dy
+    
     
     def setup(self,*args, **kwargs):
         
         if "path" in kwargs: self.config["path"] = kwargs["path"]
+        if "medianSource" in kwargs: self.config["medianSource"] = kwargs["medianSource"]
         if "locations" in kwargs: self.config["locations"] = kwargs["locations"]
         if "baseUnit" in kwargs: self.config["baseUnit"] = kwargs["baseUnit"]
         if "interval" in kwargs: self.config["interval"] = kwargs["interval"]
@@ -155,30 +205,55 @@ class Experiment:
         if "reLoadExistDir" in kwargs and kwargs["reLoadExistDir"] == True and os.path.exists(kwargs["path"]+'/exp.json'):
             self.loadConfig(kwargs["path"]+'/exp.json')
         else:
-            self.config["predictionOffests"] = np.arange(1, 31, 1).tolist() + \
-                    np.arange(31, 60, 2).tolist() + \
-                    np.arange(61, 120, 4).tolist() + \
-                    np.arange(121, 240, 8).tolist() + \
-                    np.arange(241, 480, 16).tolist() + \
-                    np.arange(481, 24 * 60 + 1, 32).tolist()
+            interval = self.config["interval"]
+            self.config["predictionOffests"] = [5//interval,15//interval,30//interval]
+            
+            # self.config["predictionOffests"] = np.arange(1, 31, 1).tolist() + \
+            #         np.arange(31, 60, 2).tolist() + \
+            #         np.arange(61, 120, 4).tolist() + \
+            #         np.arange(121, 240, 8).tolist() + \
+            #         np.arange(241, 480, 16).tolist() + \
+            #         np.arange(481, 24 * 60 + 1, 32).tolist()
 
-            if self.config["interval"] > 1:
-                interval = self.config["interval"]
-                self.config["predictionOffests"] = np.arange(1, 30 // interval + 1, 1).tolist() + \
-                      np.arange(30 // interval + 1, 60 // interval, 1).tolist() + \
-                      np.arange(60 // interval + 1, 120 // interval, 2).tolist() + \
-                      np.arange(120 // interval + 1, 240 // interval, 4).tolist() + \
-                      np.arange(240 // interval + 1, 480 // interval, 8).tolist() + \
-                      np.arange(480 // interval + 1, 24 * 60 // interval + 1, 16).tolist()
-                units = 2*30//interval
+            # if self.config["interval"] > 1:
+            #     interval = self.config["interval"]
+            #     self.config["predictionOffests"] = np.arange(1, 30 // interval + 1, 1).tolist() + \
+            #           np.arange(30 // interval + 1, 60 // interval, 1).tolist() + \
+            #           np.arange(60 // interval + 1, 120 // interval, 2).tolist() + \
+            #           np.arange(120 // interval + 1, 240 // interval, 4).tolist() + \
+            #           np.arange(240 // interval + 1, 480 // interval, 8).tolist() + \
+            #           np.arange(480 // interval + 1, 24 * 60 // interval + 1, 16).tolist()
+            #     units = 2*30//interval
 
             #if len(self.config["parkingIDs"]) == 0:
+
+            median = None
+            if self.config["medianSource"] is not None:
+                location = self.config["medianSource"]
+                median = pdc.getMedian(self.config["locations"][location]["start"],
+                                        self.config["locations"][location]["end"],
+                                        interval = self.config["interval"],
+                                        location = location,
+                                        metric = self.config["locations"][location]["ParkingIDMetric"])
+
             for location in self.config["locations"]:
                 if "parkingIDs" not in self.config["locations"][location]:
-                    self.config["locations"][location]["parkingIDs"] = pdc.getALLParkingAeraArray(self.config["interval"],
-                                                                                                  paType = self.config["parkingType"],
-                                                                                                  number = self.config["locations"][location]["number"],
-                                                                                                  location = location)
+                    if self.config["locations"][location]["randomParkingIDs"] == False:
+                        logger.info("Choose "+location+" ParkingIDs via ["+self.config["locations"][location]["ParkingIDMetric"]+"]")
+                        self.config["locations"][location]["parkingIDs"] = pdc.getSimilarLots(self.config["locations"][location]["start"],
+                                                                                            self.config["locations"][location]["end"],
+                                                                                            interval = self.config["interval"],
+                                                                                            location = location,
+                                                                                            number = self.config["locations"][location]["number"],
+                                                                                            metric = self.config["locations"][location]["ParkingIDMetric"],
+                                                                                            median = median)
+                    else:
+                        self.config["locations"][location]["parkingIDs"] = pdc.getALLParkingAeraArray(self.config["interval"],
+                                                                                                    paType = self.config["parkingType"],
+                                                                                                    number = self.config["locations"][location]["number"],
+                                                                                                    location = location)
+                    logger.info(self.config["locations"][location]["parkingIDs"])
+                    
    
             _checkAndCreatDir(self.config["path"])
 
@@ -193,7 +268,7 @@ class Experiment:
         with open(self.config["path"]+'/exp.json', 'w+') as outfile:
                 json.dump(self.config, outfile)
                 
-    
+        
     def showConfig(self):
         print(json.dumps(self.config, indent=2, sort_keys=True))
         
@@ -240,7 +315,6 @@ class Experiment:
             else:
                 X = np.concatenate((X,XYs[i]["x"]),axis=0)
                 y = np.concatenate((y,XYs[i]["y"]),axis=0)
-                
         
         where_are_NaNs = np.isnan(X)
         X[where_are_NaNs] = 0
@@ -260,6 +334,8 @@ class Experiment:
         xFile = path+'/x.npy'
         yFile = path+'/y.npy'
         
+        trainRrcNum = 0
+        
         if os.path.isfile(xFile) and force == False:
             logger.info("X/Y Files are exist, skip generation!")
         else:
@@ -268,32 +344,61 @@ class Experiment:
                                            self.config["locations"][location]["parkingIDs"],
                                            self.config["locations"][location]["start"],
                                            self.config["locations"][location]["end"])
-            np.save(xFile, x)
-            np.save(yFile, y)
-        
-        logger.info("Prepare Test Datasets for "+location)
-        xFile = path+'/tx.npy'
-        yFile = path+'/ty.npy'
-        
-        if os.path.isfile(xFile) and force == False:
-            logger.info("X/Y Files are exist, skip generation!")
-        else:
-            logger.info("Generate X/Y Test Files!")
-            x,y = self._generateTTDatasets(location,
-                                           self.config["locations"][location]["parkingIDs"],
-                                           self.config["locations"][location]["testStart"],
-                                           self.config["locations"][location]["testEnd"])
-            np.save(xFile, x)
-            np.save(yFile, y)
+            trainRrcNum = x.shape[0]
             
+            np.save(xFile, x)
+            np.save(yFile, y)
+        
+        if "testStart" in self.config["locations"][location]:
+            logger.info("Prepare Test Datasets for "+location)
+            xFile = path+'/tx.npy'
+            yFile = path+'/ty.npy'
+            
+            if os.path.isfile(xFile) and force == False:
+                logger.info("X/Y Files are exist, skip generation!")
+            else:
+                logger.info("Generate X/Y Test Files!")
+                x,y = self._generateTTDatasets(location,
+                                            self.config["locations"][location]["parkingIDs"],
+                                            self.config["locations"][location]["testStart"],
+                                            self.config["locations"][location]["testEnd"])
+                np.save(xFile, x)
+                np.save(yFile, y)
+        else:
+            logger.info("NOT Generate Test Datasets for "+location+" in a time range!")
+            ttrate = 0.25
+            if "TTRate" in self.config["locations"][location]:
+                ttrate = self.config["locations"][location]["TTRate"]
+            
+            logger.info("The Train:Test datasets split rate is {}:{}".format(1-ttrate,ttrate))
+            
+            splitIndex = int((1-ttrate) * trainRrcNum*10//10)
+            
+            arr = np.arange(trainRrcNum)
+            
+            if "random" in self.config["locations"][location]:
+                logger.info("Generate random index for datasets")
+                np.random.shuffle(arr)
+
+            trIndex = path+'/trainIndex.npy'
+            teIndex = path+'/testIndex.npy'
+            
+            np.save(trIndex, arr[:splitIndex])
+            np.save(teIndex, arr[splitIndex:])
+
+
     def prepareTTDatasets(self,force = False):
         for location in self.config["locations"]:
             self._prepareTTDatasets(location,force)
-    
-    
+
+
     def _trainAndTest(self,modelsName,uuid,trainMethod, testMethod, multiProcess,trainParameters = None,reTrain = False,Test = True):
         filepath = self.config["path"]+"/"+uuid+"/"
         modelParas = self.config["experiments"][uuid]
+
+        trainWithParkingData = True
+        if "trainWithParkingData" in modelParas:
+            trainWithParkingData = modelParas["trainWithParkingData"]
 
         _checkAndCreatDir(filepath)
         
@@ -302,9 +407,26 @@ class Experiment:
         parkingSlotsNum = self.config["locations"][modelParas["location"]]["number"]
 
         start = time.time()
+        
+        train_X = None
+        train_Y = None
         #_checkAndCreatDir(self.config["path"]+"/"+modelParas["location"])
-        train_X = np.load(self.config["path"]+"/"+modelParas["location"]+'/x.npy',allow_pickle=True)
-        train_Y = np.load(self.config["path"]+"/"+modelParas["location"]+'/y.npy',allow_pickle=True)
+        dX = np.load(self.config["path"]+"/"+modelParas["location"]+'/x.npy',allow_pickle=True)
+        dY = np.load(self.config["path"]+"/"+modelParas["location"]+'/y.npy',allow_pickle=True)
+        
+        trIndex = None
+        teIndex = None
+        if os.path.exists(self.config["path"]+"/"+modelParas["location"]+'/trainIndex.npy') == True:
+            trIndex = np.load(self.config["path"]+"/"+modelParas["location"]+'/trainIndex.npy',allow_pickle=True)
+            
+            train_X = dX[trIndex]
+            train_Y = dY[trIndex]
+        else:
+            train_X = dX
+            train_Y = dY
+
+        if trainWithParkingData == False:
+            train_X = train_X[:,:,1:train_X.shape[2]]
         
         trainDatasets = []
         clfs = []
@@ -339,9 +461,23 @@ class Experiment:
             logger.info("Start Test Models with Test Dataset!")
             start = time.time()
             
-            #_checkAndCreatDir(self.config["path"]+"/"+modelParas["location"])
-            test_X = np.load(self.config["path"]+"/"+modelParas["location"]+'/tx.npy',allow_pickle=True)
-            test_Y = np.load(self.config["path"]+"/"+modelParas["location"]+'/ty.npy',allow_pickle=True)
+            test_X = None
+            test_Y = None
+            
+            if os.path.exists(self.config["path"]+"/"+modelParas["location"]+'/testIndex.npy') == True:
+                teIndex = np.load(self.config["path"]+"/"+modelParas["location"]+'/testIndex.npy',allow_pickle=True)
+                print(teIndex)
+                test_X = dX[teIndex]
+                test_Y = dY[teIndex]
+            else:
+                test_X = np.load(self.config["path"]+"/"+modelParas["location"]+'/tx.npy',allow_pickle=True)
+                test_Y = np.load(self.config["path"]+"/"+modelParas["location"]+'/ty.npy',allow_pickle=True)
+
+            if trainWithParkingData == False:
+                test_X = test_X[:,:,1:test_X.shape[2]]
+
+            logger.info("test_X.shape {}".format(test_X.shape))
+            logger.info("test_Y.shape {}".format(test_Y.shape))
 
             testDatasets = []
             res = []
@@ -351,7 +487,8 @@ class Experiment:
                 testData = {"loghead": log_head, 
                             "col": col, 
                             "x": test_X, 
-                            "y": test_Y[:,:,i], 
+                            "y": test_Y[:,:,i],
+                            "y_train":train_Y[:,:,i].ravel(),
                             "filepath":filepath,
                             "parkingSlotsNum":parkingSlotsNum,
                             "parameters":trainParameters}
@@ -374,6 +511,7 @@ class Experiment:
         
         self.loadConfig(self.config["path"]+"/exp.json")
         self.config["results"][uuid] = res
+        self.config["experiments"][uuid]["status"] = "done"
         self.saveConfig()
         logger.info("All Finished and Results Saved!")
     
@@ -388,7 +526,137 @@ class Experiment:
                 p = self.config["experiments"][uuid]["parameters"]
             self._trainAndTest(modelName,uuid,model.train, model.test, processNum,trainParameters = p,reTrain = reTrain,Test = Test)
     
-    
+    def runARMIA(self,uuid,reTrain = False):
+        # if "status" in self.config["experiments"][uuid] and self.config["experiments"][uuid]["status"] == "running":
+        #     logger.info("ARMIA " + uuid + " is running, skip!")
+        #     return 
+
+        start = time.time()
+        if uuid in self.config["results"] and reTrain == False:
+            logger.info("ARIMA evaluate results data is exist, skip!")
+        else:
+            res = []
+            modelParas = self.config["experiments"][uuid]            
+            
+            if "testStart" not in modelParas or "testEnd" not in modelParas:
+                logger.info("ARIMA evaluate STOP! missing test date range (testStart,testEnd)")
+                return
+
+            params = None
+            if "parameters" in self.config["experiments"][uuid]:
+                params = modelParas["parameters"]
+
+            tSerial = np.core.defchararray.add("t", np.char.mod('%d', self.config["predictionOffests"]))
+
+            #for i in range(len(tSerial)):
+            i = len(tSerial) -1
+            predictOffest = self.config["predictionOffests"][i]
+            
+            m = {
+            "mae" :0,
+            "rmse"  : 0,
+            "mase" : 0,
+            "r2" : 0,
+            }
+
+            for pid in self.config["locations"][modelParas["location"]]["parkingIDs"]:
+                trainY = _getParkingIdDataset(str(int(pid)),
+                                            self.config["interval"],
+                                            self.config["locations"][modelParas["location"]]["start"],
+                                            self.config["locations"][modelParas["location"]]["end"],
+                                            [],
+                                            location = modelParas["location"])
+                testY = _getParkingIdDataset(pid,
+                                            self.config["interval"],
+                                            modelParas["testStart"],
+                                            modelParas["testEnd"],
+                                            [],
+                                            location = modelParas["location"])
+
+                print("testStart:{}  testEnd:{} ".format(modelParas["testStart"],modelParas["testEnd"]))
+                print("trainY:{},testY:{}".format(trainY.shape,testY.shape))
+
+                trainY = trainY.reshape(trainY.shape[0])
+                testY = testY.reshape(testY.shape[0])
+
+                _m = armia.evaluate(predictOffest,trainY, testY, params)
+
+                m["mae"] += _m["mae"]
+                m["rmse"] += _m["rmse"]
+                m["rmse"] += _m["mase"]
+                m["r2"] += _m["r2"]
+
+                xlen = len(self.config["locations"][modelParas["location"]]["parkingIDs"])
+                    
+                m["mae"] = m["mae"]/xlen
+                m["rmse"] = m["rmse"]/xlen
+                m["rmse"] = m["mase"]/xlen
+                m["r2"] = m["r2"]/xlen
+
+                res.append({tSerial[i]:m})
+
+            end = time.time()
+            logger.info("ARIMA evaluation, spent: %.2fs" % (end - start))
+
+            self.loadConfig(self.config["path"]+"/exp.json")
+            self.config["results"][uuid] = res
+            self.config["experiments"][uuid]["status"] = "done"
+            self.saveConfig()
+            logger.info("All ARIMA evaluation Finished and Results Saved!")
+
+
+    def runHA(self,uuid,multiProcess,reTrain = False):
+        # if "status" in self.config["experiments"][uuid] and self.config["experiments"][uuid]["status"] == "running":
+        #     logger.info("HA " + uuid + " is running, skip!")
+        #     return
+
+        start = time.time()
+        if uuid in self.config["results"] and reTrain == False:
+            logger.info("HA evaluate results data is exist, skip!")
+        else:
+            modelParas = self.config["experiments"][uuid]
+
+            logger.info("Start evaluate HA ["+uuid+"] models Training and Test!")
+
+            tSerial = np.core.defchararray.add("t", np.char.mod('%d', self.config["predictionOffests"]))
+
+            x,y = self.convertHADataset(modelParas["location"])
+
+            res = []
+            datasets = []
+
+            for i in range(len(tSerial)):
+                log_head = "[" + str(i) + "/" + str(len(tSerial)) + "]"
+                col = tSerial[i]
+                data = {"loghead": log_head, 
+                            "col": col, 
+                            "x": x, 
+                            "y": y,
+                            "y_train":None,
+                            "tIndex":i
+                            }
+                if multiProcess <= 1:
+                    res.append(ha.evaluate(data))
+                else:
+                    datasets.append(data)
+
+            if multiProcess > 1:
+                p2 = Pool(processes=multiProcess)
+                ares = p2.map(ha.evaluate, datasets)
+                p2.close()
+                p2.join()
+                res = res + ares
+
+            end = time.time()
+            logger.info("HA evaluation, spent: %.2fs" % (end - start))
+            
+            self.loadConfig(self.config["path"]+"/exp.json")
+            self.config["results"][uuid] = res
+            self.config["experiments"][uuid]["status"] = "done"
+            self.saveConfig()
+            logger.info("All HA evaluation Finished and Results Saved!")
+
+
     def add(self,ep):
         ep["uuid"] = str(uuid.uuid1())
         ep["createDate"] = arrow.now().format("YYYY-MM-DD HH:mm:ss"),
@@ -434,6 +702,17 @@ class Experiment:
                 
     
     def runTFModel(self,modelName,model,processNum,uuid,reTrain = False):
+        if uuid in self.config["results"] and reTrain == False:
+            logger.info(modelName+" results data is exist, skip!")
+            return
+
+        # if "status" in self.config["experiments"][uuid] and self.config["experiments"][uuid]["status"] == "running":
+        #     logger.info(modelName + " " + uuid + " is running, skip!")
+        #     return
+
+        self.config["experiments"][uuid]["status"] = "running"
+        self.saveConfig()
+
         logger.info("Start transfer learning model [{}] training/testing".format(modelName))
         
         start = time.time()
@@ -443,41 +722,50 @@ class Experiment:
         _checkAndCreatDir(filepath)
         
         logger.info("loading datasets for dataloaders...")
-        datasets = ModelUtils.loadDatasets(self.config["path"]+"/",modelParas["source"],modelParas["target"])
+        #datasets = ModelUtils.loadDatasets(self.config["path"]+"/",modelParas["source"],modelParas["target"])
         
         tSerial = np.core.defchararray.add("t", np.char.mod('%d', self.config["predictionOffests"]))
+
+        trainWithParkingData = True
+        if "trainWithParkingData" in modelParas:
+            trainWithParkingData = modelParas["trainWithParkingData"]
         
         # For DANN
         if "featureSize" in modelParas["parameters"] and int(modelParas["parameters"]["featureSize"]) != int(self.config["baseUnit"]) * (1 + len(self.config["features"])):
             logger.info("featureSize:{} baseUnit:{}".format(modelParas["parameters"]["featureSize"],self.config["baseUnit"]))
-            modelParas["parameters"]["featureSize"] = int(self.config["baseUnit"]) * (1 + len(self.config["features"]))
+            modelParas["parameters"]["featureSize"] = int(self.config["baseUnit"]) * ((1 if trainWithParkingData else 0) + len(self.config["features"]))
             logger.warning("runTFModel Correct featureSize:{}".format(modelParas["parameters"]["featureSize"]))
      
         # For ADDA
         if "e_input_dims" in modelParas["parameters"] and int(modelParas["parameters"]["e_input_dims"]) != int(self.config["baseUnit"]) * (1 + len(self.config["features"])):
             logger.info("e_input_dims:{} baseUnit:{}".format(modelParas["parameters"]["e_input_dims"],self.config["baseUnit"]))
-            modelParas["parameters"]["e_input_dims"] = int(self.config["baseUnit"]) * (1 + len(self.config["features"]))
+            modelParas["parameters"]["e_input_dims"] = int(self.config["baseUnit"]) * ((1 if trainWithParkingData else 0) + len(self.config["features"]))
             logger.warning("runTFModel Correct e_input_dims:{}".format(modelParas["parameters"]["e_input_dims"]))
      
         tdata = []
         res = []
         for i in range(len(tSerial)):
             col = tSerial[i]
+            datasets = ModelUtils.loadDatasets(self.config["path"]+"/",modelParas["source"],modelParas["target"],tIndex=i,trainWithParkingData = trainWithParkingData)
+            y_train = datasets["srcTrain"].getY()
             _data = {
-                "dataloaders":ModelUtils.getDataSrcTarLoaders(datasets,modelParas["parameters"]["batchSize"],i),
+                "dataloaders":ModelUtils.getDataSrcTarLoaders(datasets,modelParas["parameters"]["batchSize"]),
                 "col": col, 
                 "filepath" : filepath,
                 "reTrain":reTrain,
+                "baseUnit":self.config["baseUnit"],
+                "featureNum":(1 if trainWithParkingData else 0) + len(self.config["features"]),
+                "y_train":y_train[:,:,i].ravel(),
                 "parameters":modelParas["parameters"]
             }
             if processNum > 1:
                 tdata.append(_data)
             else:
-                model.train(_data)
+                res.append(model.train(_data))
                 
         if processNum > 1:
-            p2 = Pool(processes=multiProcess)
-            ares = p2.map(testMethod, testDatasets)
+            p2 = Pool(processes=processNum)
+            ares = p2.map(model.train, tdata)
             p2.close()
             p2.join()
             res = res + ares
@@ -487,6 +775,7 @@ class Experiment:
         
         self.loadConfig(self.config["path"]+"/exp.json")
         self.config["results"][uuid] = res
+        self.config["experiments"][uuid]["status"] = "done"
         self.saveConfig()
         logger.info("Results Saved!")
         
@@ -512,10 +801,12 @@ class Experiment:
 
             if "LightGBM" == experiment["model"]: self.runModel("lightGBM",lgbm,1,uuid,reTrain,Test)
             if "FNN"  == experiment["model"]: self.runModel("FNN",fnn,1,uuid,reTrain,Test)
+            if "convLSTM" == experiment["model"]: self.runModel("convLSTM",convlstm,1,uuid,reTrain,Test)
             if "LSTM" == experiment["model"]: self.runModel("LSTM",lstm,1,uuid,reTrain,Test)
             if "DANN" == experiment["model"]: self.runTFModel("DANN",dann,1,uuid,reTrain)
             if "ADDA" == experiment["model"]: self.runTFModel("ADDA",adda,1,uuid,reTrain)
-
+            if "HA" == experiment["model"]: self.runHA(uuid,3,reTrain)
+            if "ARIMA" == experiment["model"]: self.runARMIA(uuid,reTrain)
             
     def rmResult(self, uuid):
         if uuid in self.config["results"]:

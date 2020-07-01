@@ -29,16 +29,16 @@ def enableGPU():
 """
 
 def lstm(input_size,hidden_size,output_size,learningRate = 0.01,loss = 'mae'):
-    inputs = Input(input_size)
-    lstm1 = LSTM(hidden_size,activation ='relu')(inputs)
-    #lstm2 = LSTM(100,activation ='relu')(lstm1)
-    dense = Dense(output_size)(lstm1)
+
+    model = Sequential()
+    model.add(ConvLSTM2D(filters=128, kernel_size=(3,3), activation='relu',input_shape=input_size))
+    model.add(Flatten())
+    model.add(Dense(output_size))
     
-    model = Model(inputs=inputs, outputs=dense)
-    model.summary()
-    
+    #model = Model(inputs=inputs, outputs=dense)    
     model.compile(optimizer = Adam(lr = learningRate), loss=loss,metrics = ['accuracy', 'mse','mae'])
-    
+    #model.summary()
+
     return model
 
 
@@ -101,7 +101,10 @@ def train(data):
 #             enableGPU()
             
 #         with tf.device("gpu"):
-        model = lstm(input_size = (train_X.shape[1],train_X.shape[2]),
+        train_X = train_X.reshape(train_X.shape[0],1,train_X.shape[1],train_X.shape[2],1)
+        test_X = test_X.reshape(test_X.shape[0],1,test_X.shape[1],test_X.shape[2],1)
+        print(train_X.shape)
+        model = lstm(input_size = (train_X.shape[1],train_X.shape[2],train_X.shape[3],train_X.shape[4]),
                      hidden_size = hidden_size,
                      output_size = train_y.shape[1],
                      learningRate = learningRate,
@@ -161,7 +164,9 @@ def test(data):
     if os.path.isfile(modelFile):
         print (data["col"] + "loading model file:"+modelFile)
         model = joblib.load(modelFile)
-    
+        
+        X_test = X_test.reshape(X_test.shape[0],1,X_test.shape[1],X_test.shape[2],1)
+
         pred_y = model.predict(X_test, 
                                      batch_size=batch_size, 
                                      verbose=0, 
