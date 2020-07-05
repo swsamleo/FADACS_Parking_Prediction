@@ -50,7 +50,8 @@ class FeatureConvertor():
                'num_of_open_poi0.5', 'mean_dis0.5', 'min_dis0.8', 'num_of_poi0.8',
                'num_of_open_poi0.8', 'mean_dis0.8', 'min_dis1.0', 'num_of_poi1.0',
                'num_of_open_poi1.0', 'mean_dis1.0']
-        self.slot_ruleFs = ["availability","duration"]
+        #self.slot_ruleFs = ["availability","duration"]
+        self.slot_ruleFs = ["availability"]
         
         self.df_weather = None
         self.df_slot_poi = None

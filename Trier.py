@@ -18,6 +18,8 @@ from multiprocessing import cpu_count
 from multiprocessing import Pool
 from tqdm import trange, tqdm
 import pandas as pd
+from sklearn.feature_selection import f_regression
+from IPython.display import HTML, display
 
 import FeatureConvertor as fc
 import ParkingDataConvertor as pdc
@@ -190,6 +192,40 @@ class Experiment:
         
         return dx,dy
     
+    def showFeaturesCorrelationCoefficient(self,location,start,end,features = None):
+        #location = "MelbCity"
+        if features is None:
+            features = self.config["features"]
+
+        ids = self.getParkingIds(location)
+
+        npd = None
+        for id in ids:
+            p1 = _getParkingIdDataset(id,self.config["interval"],start,end,features,location=location)
+            #print(p1.shape)
+            if npd is None:
+                npd = p1
+            else:
+                npd = np.concatenate((npd,p1),axis=0)
+
+        df=pd.DataFrame(data=npd[0:,0:],index=[i for i in range(npd.shape[0])],columns=["occupancy"]+features)
+
+        c = df.corr(method ='pearson')["occupancy"].values[1:]
+
+        F, pval = f_regression(npd[0:,1:len(features)+1],npd[0:,0])
+
+        rst = np.column_stack( (features,c,F,pval))
+        rdf=pd.DataFrame(data=rst[0:,0:],index=[i for i in range(rst.shape[0])],columns=["Features","Pearson Correlation Coefficient","F Value","p-Value"])
+        rdf =rdf.sort_values(by=['Pearson Correlation Coefficient'],ascending=False)
+
+        html = '<table><tr><th>Features</th><th>Pearson<p>Correlation<p>Coefficient</th><th>F Value</th><th>p-Value</th></tr>'
+
+        for i in rdf.index:
+            line =  ('<tr><td>{}</td><td>{:10.2f}</td><td>{:10.2f}</td><td>{}</td></tr>').format(features[i],c[i],F[i],("0" if pval[i] == 0 else "{:.2e}".format(pval[i]) ) )
+            html += line
+
+        html += '</table>'
+        display(HTML(html))
     
     def setup(self,*args, **kwargs):
         
@@ -274,6 +310,9 @@ class Experiment:
         
     def showFeatureList(self):
         print(melbFC.getFeatureList())
+
+    def getAllFeaturesList(self):
+        return melbFC.getFeatureList()
 
     def _generateTTDatasets(self,location,parkingIDs,start,end):
         logger.debug(parkingIDs)

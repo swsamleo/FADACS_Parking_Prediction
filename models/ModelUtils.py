@@ -29,6 +29,7 @@ class CityDataset(data.Dataset):
         self.featureNum = 0
         self.trainWithParkingData = trainWithParkingData
         self.x, self.y = self.loadDatasets()
+        print("CityDataset dataset_size {}".format(self.dataset_size))
 
     def getBaseUnit(self):
         return self.baseUnit
