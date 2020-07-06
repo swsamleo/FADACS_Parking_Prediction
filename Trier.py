@@ -717,6 +717,11 @@ class Experiment:
             print("experiment "+uuid +" is not Exist!")
     
     
+    def rmAll(self):
+        for ep in self.config["experiments"]:
+            self.rm(ep)
+
+
     def rm(self,ep):
         if ep in self.config["experiments"]:
             xexp = self.config["experiments"][ep]
