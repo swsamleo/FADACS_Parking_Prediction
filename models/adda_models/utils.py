@@ -15,7 +15,7 @@ class RMSELoss(nn.Module):
         return torch.sqrt(self.mse(yhat,y))
 
 def MAPELoss(output, target):
-    return torch.mean(torch.abs((target - output) / target))
+    return torch.mean(torch.abs((target - output) / target+(1e-06)))
 
 def make_variable(tensor, volatile=False):
     """Convert Tensor to Variable."""

@@ -132,7 +132,7 @@ def getDataSrcTarLoaders(datasets,batch_size):
 def mean_absolute_percentage_error(y_true, y_pred): 
     if np.array(np.abs(y_true) - np.abs(y_pred)).all() == 0:
         return 0
-    return np.mean(np.abs((y_true - y_pred) / y_true)) * 100
+    return np.mean(np.abs((y_true - y_pred) / y_true+(1e-05))) * 100
 
 def symmetric_mean_absolute_percentage_error(y_true, y_pred): 
     print(y_true)

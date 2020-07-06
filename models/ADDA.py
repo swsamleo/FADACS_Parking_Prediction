@@ -20,127 +20,6 @@ from . import ModelUtils
 
 #################
 
-def train_tgt(src_encoder, tgt_encoder, critic,
-              src_data_loader, tgt_data_loader):
-    """Train encoder for target domain."""
-    ####################
-    # 1. setup network #
-    ####################
-
-    # set train state for Dropout and BN layers
-    tgt_encoder.train()
-    critic.train()
-
-    # setup criterion and optimizer
-    criterion = nn.CrossEntropyLoss()
-    optimizer_tgt = optim.Adam(tgt_encoder.parameters(),
-                               lr=params.c_learning_rate,
-                               betas=(params.beta1, params.beta2))
-    optimizer_critic = optim.Adam(critic.parameters(),
-                                  lr=params.d_learning_rate,
-                                  betas=(params.beta1, params.beta2))
-    len_data_loader = min(len(src_data_loader), len(tgt_data_loader))
-
-    ####################
-    # 2. train network #
-    ####################
-
-    for epoch in range(params.num_epochs):
-        # zip source and target data pair
-        data_zip = enumerate(zip(src_data_loader, tgt_data_loader))
-        for step, ((images_src, _), (images_tgt, _)) in data_zip:
-            ###########################
-            # 2.1 train discriminator #
-            ###########################
-
-            # make images variable
-            images_src = make_variable(images_src)
-            images_tgt = make_variable(images_tgt)
-
-            # zero gradients for optimizer
-            optimizer_critic.zero_grad()
-
-            # extract and concat features
-            feat_src = src_encoder(images_src)
-            feat_tgt = tgt_encoder(images_tgt)
-            feat_concat = torch.cat((feat_src, feat_tgt), 0)
-
-            # predict on discriminator
-            pred_concat = critic(feat_concat.detach())
-
-            # prepare real and fake label
-            label_src = make_variable(torch.ones(feat_src.size(0)).long())
-            label_tgt = make_variable(torch.zeros(feat_tgt.size(0)).long())
-            label_concat = torch.cat((label_src, label_tgt), 0)
-
-            # compute loss for critic
-            loss_critic = criterion(pred_concat, label_concat)
-            loss_critic.backward()
-
-            # optimize critic
-            optimizer_critic.step()
-
-            pred_cls = torch.squeeze(pred_concat.max(1)[1])
-            acc = (pred_cls == label_concat).float().mean()
-
-            ############################
-            # 2.2 train target encoder #
-            ############################
-
-            # zero gradients for optimizer
-            optimizer_critic.zero_grad()
-            optimizer_tgt.zero_grad()
-
-            # extract and target features
-            feat_tgt = tgt_encoder(images_tgt)
-
-            # predict on discriminator
-            pred_tgt = critic(feat_tgt)
-
-            # prepare fake labels
-            label_tgt = make_variable(torch.ones(feat_tgt.size(0)).long())
-
-            # compute loss for target encoder
-            loss_tgt = criterion(pred_tgt, label_tgt)
-            loss_tgt.backward()
-
-            # optimize target encoder
-            optimizer_tgt.step()
-
-            #######################
-            # 2.3 print step info #
-            #######################
-            if ((step + 1) % params.log_step == 0):
-                print("Epoch [{}/{}] Step [{}/{}]:"
-                      "d_loss={:.5f} g_loss={:.5f} acc={:.5f}"
-                      .format(epoch + 1,
-                              params.num_epochs,
-                              step + 1,
-                              len_data_loader,
-                              loss_critic.item(),
-                              loss_tgt.item(),
-                              acc.item()))
-
-        #############################
-        # 2.4 save model parameters #
-        #############################
-        if ((epoch + 1) % params.save_step == 0):
-            torch.save(critic.state_dict(), os.path.join(
-                params.model_root,
-                params.tIndex+"critic-{}.pt".format(epoch + 1)))
-            torch.save(tgt_encoder.state_dict(), os.path.join(
-                params.model_root,
-                params.tIndex+"target-encoder-{}.pt".format(epoch + 1)))
-
-    torch.save(critic.state_dict(), os.path.join(
-        params.model_root,
-        params.tIndex+params.d_model_restore))
-    torch.save(tgt_encoder.state_dict(), os.path.join(
-        params.model_root,
-        params.tIndex+params.tgt_encoder_restore))
-    return tgt_encoder
-
-
 def train_tgt_mlp(src_encoder, tgt_encoder, critic,
               src_data_loader, tgt_data_loader):
     """Train encoder for target domain."""
@@ -155,11 +34,13 @@ def train_tgt_mlp(src_encoder, tgt_encoder, critic,
     # setup criterion and optimizer
     criterion = nn.CrossEntropyLoss()
     optimizer_tgt = optim.Adam(tgt_encoder.parameters(),
-                               lr=params.c_learning_rate,
+                               lr=params.g_learning_rate,
                                betas=(params.beta1, params.beta2))
     optimizer_critic = optim.Adam(critic.parameters(),
                                   lr=params.d_learning_rate,
                                   betas=(params.beta1, params.beta2))
+    # optimizer_critic = optim.SGD(critic.parameters(),
+    #                               lr=params.d_learning_rate)
     len_data_loader = min(len(src_data_loader), len(tgt_data_loader))
 
     ####################
@@ -188,6 +69,7 @@ def train_tgt_mlp(src_encoder, tgt_encoder, critic,
 
             # predict on discriminator
             pred_concat = critic(feat_concat.detach())
+            #print("pred_concat.shape:{}".format(pred_concat.shape))
 
             # prepare real and fake label
             label_src = make_variable(torch.ones(feat_src.size(0)).long())
@@ -231,16 +113,19 @@ def train_tgt_mlp(src_encoder, tgt_encoder, critic,
             #######################
             # 2.3 print step info #
             #######################
+
+            #print("step:{} params.log_step:{}".format(step,params.log_step))
+
             if ((step + 1) % params.log_step == 0):
-                print("Epoch [{}/{}] Step [{}/{}]:"
-                      "d_loss={:.5f} g_loss={:.5f} acc={:.5f}"
-                      .format(epoch + 1,
-                              params.num_epochs,
-                              step + 1,
-                              len_data_loader,
-                              loss_critic.item(),
-                              loss_tgt.item(),
-                              acc.item()))
+                print("train_tgt_mlp Epoch [{}/{}] Step [{}/{}]:"
+                        "d_loss={:.5f} g_loss={:.5f} acc={:.5f}"
+                        .format(epoch + 1,
+                                params.num_epochs,
+                                step + 1,
+                                len_data_loader,
+                                loss_critic.item(),
+                                loss_tgt.item(),
+                                acc.item()))
 
         #############################
         # 2.4 save model parameters #
@@ -259,101 +144,11 @@ def train_tgt_mlp(src_encoder, tgt_encoder, critic,
     torch.save(tgt_encoder.state_dict(), os.path.join(
         params.model_root,
         params.tIndex+params.tgt_encoder_restore))
+
+    print("=== Training encoder for target domain === END!!!")
     return tgt_encoder
 
 #####################################
-
-def train_src(encoder, classifier, data_loader):
-    """Train classifier for source domain."""
-    ####################
-    # 1. setup network #
-    ####################
-
-    # set train state for Dropout and BN layers
-    encoder.train()
-    classifier.train()
-
-    # setup criterion and optimizer
-    optimizer = optim.Adam(
-        list(encoder.parameters()) + list(classifier.parameters()),
-        lr=params.c_learning_rate,
-        betas=(params.beta1, params.beta2))
-    criterion = nn.CrossEntropyLoss()
-
-    ####################
-    # 2. train network #
-    ####################
-
-    for epoch in range(params.num_epochs_pre):
-        for step, (images, labels) in enumerate(data_loader):
-            # make images and labels variable
-            images = make_variable(images)
-            labels = make_variable(labels.squeeze_())
-
-            # zero gradients for optimizer
-            optimizer.zero_grad()
-
-            # compute loss for critic
-            preds = classifier(encoder(images))
-            loss = criterion(preds, labels)
-
-            # optimize source classifier
-            loss.backward()
-            optimizer.step()
-
-            # print step info
-            if ((step + 1) % params.log_step_pre == 0):
-                print("Epoch [{}/{}] Step [{}/{}]: loss={}"
-                      .format(epoch + 1,
-                              params.num_epochs_pre,
-                              step + 1,
-                              len(data_loader),
-                              loss.item()))
-
-        # eval model on test set
-        if ((epoch + 1) % params.eval_step_pre == 0):
-            eval_src(encoder, classifier, data_loader)
-
-        # save model parameters
-        if ((epoch + 1) % params.save_step_pre == 0):
-            save_model(encoder, params.tIndex+"source-encoder-{}.pt".format(epoch + 1),params)
-            save_model(classifier, params.tIndex+"source-classifier-{}.pt".format(epoch + 1),params)
-
-    # # save final model
-    save_model(encoder, params.tIndex+"source-encoder-final.pt",params)
-    save_model(classifier, params.tIndex+"source-classifier-final.pt",params)
-
-    return encoder, classifier
-
-
-def eval_src(encoder, classifier, data_loader):
-    """Evaluate classifier for source domain."""
-    # set eval state for Dropout and BN layers
-    encoder.eval()
-    classifier.eval()
-
-    # init loss and accuracy
-    loss = 0
-    acc = 0
-
-    # set loss function
-    criterion = nn.CrossEntropyLoss()
-
-    # evaluate network
-    for (images, labels) in data_loader:
-        images = make_variable(images, volatile=True)
-        labels = make_variable(labels)
-
-        preds = classifier(encoder(images))
-        #loss += criterion(preds, labels).item()
-
-        pred_cls = preds.data.max(1)[1]
-        acc += pred_cls.eq(labels.data).cpu().sum()
-
-    #loss /= len(data_loader)
-    acc /= len(data_loader.dataset)
-
-    print("Avg Accuracy = {:2%}".format( acc))
 
 
 def train_src_mlp(encoder, classifier, data_loader):
@@ -381,13 +176,16 @@ def train_src_mlp(encoder, classifier, data_loader):
         for step, (datas, labels) in enumerate(data_loader):
             # make images and labels variable
             datas = make_variable(datas)
-            labels = make_variable(labels.squeeze_())
+            labels = make_variable(labels[:,np.newaxis])
+
+            #print("train_src_mlp labels.shape:{}".format(labels.shape))
 
             # zero gradients for optimizer
             optimizer.zero_grad()
 
             # compute loss for critic
             preds = classifier(encoder(datas))
+            #print("[1]labels size{}".format(labels.size()))
             loss = criterion(preds, labels)
 
             # optimize source classifier
@@ -405,7 +203,7 @@ def train_src_mlp(encoder, classifier, data_loader):
 
         # eval model on test set
         if ((epoch + 1) % params.eval_step_pre == 0):
-            eval_src(encoder, classifier, data_loader)
+            eval_src_mlp(encoder, classifier, data_loader)
 
         # save model parameters
         if ((epoch + 1) % params.save_step_pre == 0):
@@ -437,9 +235,11 @@ def eval_src_mlp(encoder, classifier, data_loader):
     # evaluate network
     for (datas, labels) in data_loader:
         datas = make_variable(datas, volatile=True)
-        labels = make_variable(labels)
+        labels = make_variable(labels[:,np.newaxis])
+        #print("eval_src_mlp labels.shape:{}".format(labels.shape))
 
         preds = classifier(encoder(datas))
+        #print("[2]labels size{}".format(labels.size()))
         loss += criterion(preds, labels).item()
         mae_loss += mae_crit1(preds, labels).item()
 
@@ -450,37 +250,7 @@ def eval_src_mlp(encoder, classifier, data_loader):
     print("RMSE = {}, MAE = {}".format(loss, mae_loss))
 
 
-##########
-
-def eval_tgt(encoder, classifier, data_loader):
-    """Evaluation for target encoder by source classifier on target dataset."""
-    # set eval state for Dropout and BN layers
-    encoder.eval()
-    classifier.eval()
-
-    # init loss and accuracy
-    loss = 0
-    acc = 0
-
-    # set loss function
-    criterion = nn.CrossEntropyLoss()
-
-    # evaluate network
-    for (images, labels) in data_loader:
-        images = make_variable(images, volatile=True)
-        labels = make_variable(labels).squeeze_()
-
-        preds = classifier(encoder(images))
-        loss += criterion(preds, labels).item()
-
-        pred_cls = preds.data.max(1)[1]
-        acc += pred_cls.eq(labels.data).cpu().sum()
-
-    loss /= len(data_loader)
-    acc /= len(data_loader.dataset)
-
-    print("Avg Loss = {}, Avg Accuracy = {:2%}".format(loss, acc))
-
+#########
 
 def eval_tgt_mlp(encoder, classifier, tgt_data_loader,y_train):
     """Evaluation for target encoder by source classifier on target dataset."""
@@ -503,14 +273,19 @@ def eval_tgt_mlp(encoder, classifier, tgt_data_loader,y_train):
     # evaluate network
     for (datas, labels) in tgt_data_loader:
         datas = make_variable(datas, volatile=True)
-        labels = make_variable(labels).squeeze_()
+        labels = make_variable(labels[:,np.newaxis])
 
         #print("datas.shape:"+str(datas.shape))
         #print("labels.shape:"+str(labels.shape))
 
         preds = classifier(encoder(datas))
+
         loss += criterion(preds, labels).item()
-        mae_loss += mae_crit1(preds, labels).item()
+        mae = mae_crit1(preds, labels).item()
+        mae_loss += mae
+        
+        #print("mae:{}".format(mae))
+
         rmse_loss += rmse_criterion(preds, labels).item()
         mape_loss += MAPELoss(preds, labels)
 
@@ -519,9 +294,13 @@ def eval_tgt_mlp(encoder, classifier, tgt_data_loader,y_train):
         
         mase += ModelUtils.mean_absolut_scaled_error(y_train,y_true,y_pred)
 
+
     loss /= len(tgt_data_loader)
     #mae_loss = loss
     loss = loss**(0.5)
+
+    print("mae_loss:{}".format(mae_loss))
+
     mae_loss /= len(tgt_data_loader)
     rmse_loss /= len(tgt_data_loader)
     mape_loss /= len(tgt_data_loader)
@@ -565,6 +344,7 @@ def updateParams(parameters):
     if "manual_seed" in parameters: params.manual_seed = parameters["manual_seed"]
     if "d_learning_rate" in parameters: params.d_learning_rate = parameters["d_learning_rate"]
     if "c_learning_rate" in parameters: params.c_learning_rate = parameters["c_learning_rate"]
+    if "g_learning_rate" in parameters: params.g_learning_rate = parameters["g_learning_rate"]
     if "beta1" in parameters: params.beta1 = parameters["beta1"]
     if "beta2" in parameters: params.beta2 = parameters["beta2"]
 
@@ -619,6 +399,7 @@ def train(data):
         if "manual_seed" in parameters: params.manual_seed = parameters["manual_seed"]
         if "d_learning_rate" in parameters: params.d_learning_rate = parameters["d_learning_rate"]
         if "c_learning_rate" in parameters: params.c_learning_rate = parameters["c_learning_rate"]
+        if "g_learning_rate" in parameters: params.g_learning_rate = parameters["g_learning_rate"]
         if "beta1" in parameters: params.beta1 = parameters["beta1"]
         if "beta2" in parameters: params.beta2 = parameters["beta2"]
 
