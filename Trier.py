@@ -28,8 +28,8 @@ from TLogger import *
 
 logger = Logger("Triyer")
 
-melbFC = fc.FeatureConvertor()
-mpsFC = fc.FeatureConvertor(location = "Mornington")
+melbFC = None
+mpsFC = None
 
 PROCESS_NUM = cpu_count() // 2
 

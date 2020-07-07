@@ -16,9 +16,9 @@ logger.setLevel(logging.INFO)
 
 MAXPARKING_NUM = 38
 
-MelbLotsDF = pd.read_csv("./datasets/MelbCity/parking/StreetMarker_Lot.csv")
-mpslotsDF = pd.read_csv("./datasets/Mornington/DeviceId_Lot.csv")
-mpsSectorsDF = pd.read_csv("./datasets/Mornington/parking/sectors/sectorCounts.csv")
+MelbLotsDF = None
+mpslotsDF = None
+mpsSectorsDF = None
 
 mps1mDF = None
 mps5mDF = None
