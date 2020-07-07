@@ -8,6 +8,7 @@ from models import HA as ha
 from models import ARIMA as armia
 from models import ModelUtils
 
+import itertools as it
 import uuid
 import arrow
 import json
@@ -502,15 +503,19 @@ class Experiment:
             
             test_X = None
             test_Y = None
+
+            tlocation = modelParas["location"]
+            if "testLocation" in modelParas:
+                tlocation = modelParas["testLocation"]
             
-            if os.path.exists(self.config["path"]+"/"+modelParas["location"]+'/testIndex.npy') == True:
-                teIndex = np.load(self.config["path"]+"/"+modelParas["location"]+'/testIndex.npy',allow_pickle=True)
+            if os.path.exists(self.config["path"]+"/"+tlocation+'/testIndex.npy') == True:
+                teIndex = np.load(self.config["path"]+"/"+tlocation+'/testIndex.npy',allow_pickle=True)
                 print(teIndex)
                 test_X = dX[teIndex]
                 test_Y = dY[teIndex]
             else:
-                test_X = np.load(self.config["path"]+"/"+modelParas["location"]+'/tx.npy',allow_pickle=True)
-                test_Y = np.load(self.config["path"]+"/"+modelParas["location"]+'/ty.npy',allow_pickle=True)
+                test_X = np.load(self.config["path"]+"/"+tlocation+'/tx.npy',allow_pickle=True)
+                test_Y = np.load(self.config["path"]+"/"+tlocation+'/ty.npy',allow_pickle=True)
 
             if trainWithParkingData == False:
                 test_X = test_X[:,:,1:test_X.shape[2]]
@@ -566,9 +571,9 @@ class Experiment:
             self._trainAndTest(modelName,uuid,model.train, model.test, processNum,trainParameters = p,reTrain = reTrain,Test = Test)
     
     def runARMIA(self,uuid,reTrain = False):
-        # if "status" in self.config["experiments"][uuid] and self.config["experiments"][uuid]["status"] == "running":
-        #     logger.info("ARMIA " + uuid + " is running, skip!")
-        #     return 
+        if "status" in self.config["experiments"][uuid] and self.config["experiments"][uuid]["status"] == "running":
+            logger.info("ARMIA " + uuid + " is running, skip!")
+            return 
 
         start = time.time()
         if uuid in self.config["results"] and reTrain == False:
@@ -645,9 +650,9 @@ class Experiment:
 
 
     def runHA(self,uuid,multiProcess,reTrain = False):
-        # if "status" in self.config["experiments"][uuid] and self.config["experiments"][uuid]["status"] == "running":
-        #     logger.info("HA " + uuid + " is running, skip!")
-        #     return
+        if "status" in self.config["experiments"][uuid] and self.config["experiments"][uuid]["status"] == "running":
+            logger.info("HA " + uuid + " is running, skip!")
+            return
 
         start = time.time()
         if uuid in self.config["results"] and reTrain == False:
@@ -705,8 +710,21 @@ class Experiment:
         print("Added experiment "+ep["uuid"])
         print(json.dumps(ep, indent=2, sort_keys=True))
         return ep["uuid"]
-        
-        
+    
+
+    def addADDAExps(self,options):
+        keys = options.keys()
+        values = (options[key] for key in keys)
+        combinations = [dict(zip(keys, combination)) for combination in it.product(*values)]
+        for para in combinations:
+            self.add(
+            {
+                "model": "ADDA",
+                "source": "MelbCity",
+                "target": "Mornington",
+                "trainWithParkingData":False,
+                "parameters": para
+            })
     
     def update(self,uuid,newExp):
         if uuid in self.config["experiments"]:
@@ -718,7 +736,8 @@ class Experiment:
     
     
     def rmAll(self):
-        for ep in self.config["experiments"]:
+        for ep in list(self.config["experiments"]):
+            #print(ep)
             self.rm(ep)
 
 
@@ -750,9 +769,9 @@ class Experiment:
             logger.info(modelName+" results data is exist, skip!")
             return
 
-        # if "status" in self.config["experiments"][uuid] and self.config["experiments"][uuid]["status"] == "running":
-        #     logger.info(modelName + " " + uuid + " is running, skip!")
-        #     return
+        if "status" in self.config["experiments"][uuid] and self.config["experiments"][uuid]["status"] == "running":
+            logger.info(modelName + " " + uuid + " is running, skip!")
+            return
 
         self.config["experiments"][uuid]["status"] = "running"
         self.saveConfig()
