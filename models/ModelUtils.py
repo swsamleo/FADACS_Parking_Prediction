@@ -157,7 +157,8 @@ def getMetrics(y_true, y_pred, y_train):
     #acc = metrics.accuracy_score(y_true, y_pred)
     mae = metrics.mean_absolute_error(y_true, y_pred)
     #mape = mean_absolute_percentage_error(y_true, y_pred)
-    smape = symmetric_mean_absolute_percentage_error(y_true, y_pred)
+    #smape = symmetric_mean_absolute_percentage_error(y_true, y_pred)
+    smape = 0
     rmse = root_mean_square_error(y_true, y_pred)
 
     r2 = 0
