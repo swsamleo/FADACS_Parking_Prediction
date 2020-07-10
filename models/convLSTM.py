@@ -5,6 +5,7 @@ import time
 import os
 import datetime
 
+import tensorflow as tf
 import keras
 from keras.models import *
 from keras.layers import *
@@ -15,12 +16,6 @@ import joblib
 import pickle
 
 from . import ModelUtils
-
-def enableGPU():
-    config = tf.ConfigProto( device_count = {'GPU': 2 , 'CPU': 7} ) 
-    sess = tf.Session(config=config) 
-    keras.backend.set_session(sess)
-    print("Enabled GPU!")
 
 """
  Define Keras LSTM model.
@@ -112,21 +107,25 @@ def train(data):
                     )
         es = EarlyStopping(monitor=monitor, mode=mode, verbose=verbose,patience = 3)
 
-#         with tf.Session(config=tf.ConfigProto(log_device_placement=True)) as session:
-        history = model.fit(train_X, train_y,
-                    batch_size=batch_size,
-                    epochs=epochs,
-                    verbose=verbose,
-                    validation_data=(test_X, test_y),
-                    callbacks=[es])
+        strategy = tf.distribute.MirroredStrategy()
+        print('Number of devices: {}'.format(strategy.num_replicas_in_sync))
+        with strategy.scope():
 
-        score = model.evaluate(test_X, test_y, verbose=0)
-        print('Test loss:', score[0])
-        print('Test Acc:', score[1])
-        
-        joblib.dump(model, modelFile)
-        with open(historyFile, 'wb') as file_pi:
-            pickle.dump(history.history, file_pi)
+#         with tf.Session(config=tf.ConfigProto(log_device_placement=True)) as session:
+            history = model.fit(train_X, train_y,
+                        batch_size=batch_size,
+                        epochs=epochs,
+                        verbose=verbose,
+                        validation_data=(test_X, test_y),
+                        callbacks=[es])
+
+            score = model.evaluate(test_X, test_y, verbose=0)
+            print('Test loss:', score[0])
+            print('Test Acc:', score[1])
+            
+            joblib.dump(model, modelFile)
+            with open(historyFile, 'wb') as file_pi:
+                pickle.dump(history.history, file_pi)
 
     end = time.time()
     print("LSTM Training Done [" + data["col"] + "], spent: %.2fs" % (end - start))

@@ -21,7 +21,8 @@ def make_variable(tensor, volatile=False):
     """Convert Tensor to Variable."""
     if torch.cuda.is_available():
         tensor = tensor.cuda()
-    return Variable(tensor, volatile=volatile)
+    with torch.no_grad():
+        return Variable(tensor)
 
 def make_cuda(tensor):
     """Use CUDA if it's available."""
@@ -61,20 +62,24 @@ def init_random_seed(manual_seed):
 
 
 def init_model(net, restore):
+
     """Init models with cuda and weights."""
     # init weights of model
     net.apply(init_weights)
 
+    if torch.cuda.device_count() > 1:
+        print("Let's use", torch.cuda.device_count(), "GPUs!")
+        net = nn.DataParallel(net)
+        device = torch.device('cuda')
+        net.to(device)
+        net.restored = False
+
     # restore model weights
     if restore is not None and os.path.exists(restore):
-        net.load_state_dict(torch.load(restore))
+        #net.load_state_dict(torch.load(restore))
+        net.load_state_dict(torch.load(restore, map_location="cuda"))
         net.restored = True
         print("Restore model from: {}".format(os.path.abspath(restore)))
-
-    # check if cuda is available
-    if torch.cuda.is_available():
-        cudnn.benchmark = True
-        net.cuda()
 
     return net
 
@@ -83,7 +88,9 @@ def save_model(net, filename,params):
     """Save trained model."""
     if not os.path.exists(params.model_root):
         os.makedirs(params.model_root)
-    torch.save(net.state_dict(),
-               os.path.join(params.model_root, filename))
+    # torch.save(net.state_dict(),
+    #            os.path.join(params.model_root, filename))
+    torch.save(net.module.state_dict(), os.path.join(params.model_root, filename))
+
     print("save pretrained model to: {}".format(os.path.join(params.model_root,
                                                              filename)))

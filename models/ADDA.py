@@ -420,6 +420,7 @@ def train(data):
 
     encoder = data["parameters"]["encoder"]
 
+    #device = torch.device("cuda")
     # load models
 
     src_encoder = None
