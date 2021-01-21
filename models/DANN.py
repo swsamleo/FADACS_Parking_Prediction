@@ -1,3 +1,10 @@
+# @Time     : Jul. 10, 2020 19:45
+# @Author   : Shiyu Wang
+# @Email    : brucewsy0204@gmail.com
+# @FileName : DANN.py
+# @Version  : 1.0
+# @IDE      : VSCode
+
 import numpy as np
 import torch
 import torch.nn as nn

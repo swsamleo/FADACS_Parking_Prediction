@@ -1,3 +1,10 @@
+# @Time     : Jul. 10, 2020 19:45
+# @Author   : Zhen Zhang
+# @Email    : david.zhen.zhang@gmail.com
+# @FileName : LightGBM.py
+# @Version  : 1.0
+# @IDE      : VSCode
+
 import os.path
 
 import pandas as pd

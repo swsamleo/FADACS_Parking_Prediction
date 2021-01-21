@@ -1,3 +1,10 @@
+# @Time     : Jul. 10, 2020 19:45
+# @Author   : Zhen Zhang
+# @Email    : david.zhen.zhang@gmail.com
+# @FileName : ParkingDataConvertor.py
+# @Version  : 1.0
+# @IDE      : VSCode
+
 from sklearn.metrics import mean_squared_error
 from scipy import stats
 import pandas as pd

@@ -1,3 +1,10 @@
+# @Time     : Jul. 10, 2020 19:45
+# @Author   : Sichen Zhao, Zhen Zhang
+# @Email    : sichen.zhao@rmit.edu.au
+# @FileName : ADDA.py
+# @Version  : 1.0
+# @IDE      : VSCode
+
 """Discriminator model for ADDA."""
 import os
 import torch
@@ -9,6 +16,7 @@ import random
 import torch.backends.cudnn as cudnn
 from torch.autograd import Variable
 import time
+import json
 
 from . import ADDA_params as params
 from .adda_models.utils import *
@@ -17,11 +25,13 @@ from .adda_models.MPL import *
 from .adda_models.ConvLSTM import *
 
 from . import ModelUtils
+from .adda_models.callback import *
 
 #################
 
 def train_tgt_mlp(src_encoder, tgt_encoder, critic,
-              src_data_loader, tgt_data_loader):
+              src_data_loader, tgt_data_loader, 
+              src_regressor, tgt_data_loader_eval, y_train, callback):
     """Train encoder for target domain."""
     ####################
     # 1. setup network #
@@ -42,6 +52,15 @@ def train_tgt_mlp(src_encoder, tgt_encoder, critic,
     # optimizer_critic = optim.SGD(critic.parameters(),
     #                               lr=params.d_learning_rate)
     len_data_loader = min(len(src_data_loader), len(tgt_data_loader))
+
+    callback.on_train_begin()
+
+    lossx = {
+        "t_rmse":[],
+        "t_mae":[],
+        #"t_mape":[],
+        #"t_mase":[]
+    }
 
     ####################
     # 2. train network #
@@ -127,16 +146,32 @@ def train_tgt_mlp(src_encoder, tgt_encoder, critic,
                                 loss_tgt.item(),
                                 acc.item()))
 
+
         #############################
         # 2.4 save model parameters #
         #############################
-        if ((epoch + 1) % params.save_step == 0):
-            torch.save(critic.state_dict(), os.path.join(
-                params.model_root,
-                params.tIndex+"critic-{}.pt".format(epoch + 1)))
-            torch.save(tgt_encoder.state_dict(), os.path.join(
-                params.model_root,
-                params.tIndex+"target-encoder-{}.pt".format(epoch + 1)))
+        torch.save(critic.state_dict(), os.path.join(
+            params.model_root,
+            params.tIndex+"critic-{}.pt".format(epoch + 1)))
+        torch.save(tgt_encoder.state_dict(), os.path.join(
+            params.model_root,
+            params.tIndex+"target-encoder-{}.pt".format(epoch + 1)))
+
+        ###################################
+        # 2.5 Early stopping the training #
+        ###################################
+        t_rmse, t_mae, t_mape, t_mase = eval_tgt_mlp(tgt_encoder, src_regressor, tgt_data_loader_eval, None)
+        
+        callback.on_epoch_end(epoch, t_mae)
+        if callback.stop_flag:
+            callback.on_train_end()
+            break
+
+        # Save t_rmse,t_mae,t_mape,t_mase here and callback.best_epoch
+        lossx["t_rmse"].append(t_rmse)
+        lossx["t_mae"].append(t_mae)
+        #lossx["t_mape"].append(t_mape.item())
+        #lossx["t_mase"].append(t_mase)
 
     torch.save(critic.state_dict(), os.path.join(
         params.model_root,
@@ -146,7 +181,7 @@ def train_tgt_mlp(src_encoder, tgt_encoder, critic,
         params.tIndex+params.tgt_encoder_restore))
 
     print("=== Training encoder for target domain === END!!!")
-    return tgt_encoder
+    return tgt_encoder,lossx
 
 #####################################
 
@@ -172,6 +207,12 @@ def train_src_mlp(encoder, classifier, data_loader):
     # 2. train network #
     ####################
 
+    lossx = {
+        "eval_loss":[],
+        "eval_mae_loss":[],
+        "loss":[]
+    }
+
     for epoch in range(params.num_epochs_pre):
         for step, (datas, labels) in enumerate(data_loader):
             # make images and labels variable
@@ -194,7 +235,7 @@ def train_src_mlp(encoder, classifier, data_loader):
 
             # print step info
             if ((step + 1) % params.log_step_pre == 0):
-                print("Epoch [{}/{}] Step [{}/{}]: loss={}"
+                print("Train_src_mlp Epoch [{}/{}] Step [{}/{}]: loss={}"
                       .format(epoch + 1,
                               params.num_epochs_pre,
                               step + 1,
@@ -202,8 +243,13 @@ def train_src_mlp(encoder, classifier, data_loader):
                               loss.item()))
 
         # eval model on test set
-        if ((epoch + 1) % params.eval_step_pre == 0):
-            eval_src_mlp(encoder, classifier, data_loader)
+        eval_loss, eval_mae_loss = eval_src_mlp(encoder, classifier, data_loader)
+
+        lossx["eval_loss"].append(eval_loss)
+        lossx["eval_mae_loss"].append(eval_mae_loss)
+        lossx["loss"].append(loss.item())
+
+        # reocrd eval_loss, eval_mae_loss, loss.item() here
 
         # save model parameters
         if ((epoch + 1) % params.save_step_pre == 0):
@@ -215,7 +261,7 @@ def train_src_mlp(encoder, classifier, data_loader):
     save_model(encoder, params.tIndex+params.src_encoder_restore,params)
     save_model(classifier, params.tIndex+params.src_classifier_restore,params)
 
-    return encoder, classifier
+    return encoder, classifier,lossx
 
 
 def eval_src_mlp(encoder, classifier, data_loader):
@@ -248,6 +294,7 @@ def eval_src_mlp(encoder, classifier, data_loader):
     mae_loss /= len(data_loader)
 
     print("RMSE = {}, MAE = {}".format(loss, mae_loss))
+    return loss, mae_loss
 
 
 #########
@@ -292,8 +339,8 @@ def eval_tgt_mlp(encoder, classifier, tgt_data_loader,y_train):
         y_true = labels.cpu().detach().numpy()
         y_pred = preds.cpu().detach().numpy()
         
-        mase += ModelUtils.mean_absolut_scaled_error(y_train,y_true,y_pred)
-
+        if y_train is not None:
+            mase += ModelUtils.mean_absolut_scaled_error(y_train,y_true,y_pred)
 
     loss /= len(tgt_data_loader)
     #mae_loss = loss
@@ -304,10 +351,12 @@ def eval_tgt_mlp(encoder, classifier, tgt_data_loader,y_train):
     mae_loss /= len(tgt_data_loader)
     rmse_loss /= len(tgt_data_loader)
     mape_loss /= len(tgt_data_loader)
-    mase /= len(tgt_data_loader)
+    if y_train is not None:
+        mase /= len(tgt_data_loader)
 
     print("RMSE = {}, MAE = {} MAPE = {} MASE = {}".format(rmse_loss, mae_loss, mape_loss, mase))
     return rmse_loss, mae_loss, mape_loss, mase
+
 
 def updateParams(parameters):
     if "dataset_mean_value" in parameters: 
@@ -420,7 +469,6 @@ def train(data):
 
     encoder = data["parameters"]["encoder"]
 
-    #device = torch.device("cuda")
     # load models
 
     src_encoder = None
@@ -462,10 +510,11 @@ def train(data):
     print(">>> Source regressor <<<")
     print(src_regressor)
 
-    if not (src_encoder.restored and src_regressor.restored and
-            params.src_model_trained):
-        src_encoder, src_regressor = train_src_mlp(
-            src_encoder, src_regressor, src_data_loader)
+    if not (src_encoder.restored and src_regressor.restored and params.src_model_trained):
+        src_encoder, src_regressor,ts_loss = train_src_mlp(src_encoder, src_regressor, src_data_loader)
+
+        with open(os.path.join(params.model_root, params.tIndex+"train_src_mlp_loss.json"), 'w+') as outfile:
+                json.dump(ts_loss, outfile)
 
     # eval source model
     print("=== Evaluating regressor for source domain ===")
@@ -484,15 +533,20 @@ def train(data):
 
     if not (tgt_encoder.restored and critic.restored and
             params.tgt_model_trained):
-        tgt_encoder = train_tgt_mlp(src_encoder, tgt_encoder, critic,
-                                src_data_loader, tgt_data_loader)
+
+        tgt_callback = EarlyStopping()
+        tgt_encoder,tt_loss = train_tgt_mlp(src_encoder, tgt_encoder, critic, src_data_loader, tgt_data_loader, src_regressor, tgt_data_loader_eval, None, tgt_callback)
+                                    # src_encoder, tgt_encoder, critic, src_data_loader, tgt_data_loader, src_regressor, tgt_data_loader_eval, y_train, callback
+        print(tt_loss)
+        with open(os.path.join(params.model_root, params.tIndex+"train_tgt_mlp_loss.json"), 'w+') as outfile:
+                json.dump(tt_loss, outfile)
 
     end = time.time()
     # eval target encoder on test set of target dataset
     print("=== [{}] Evaluating regressor for encoded target domain ===".format(data["col"])+", spent: %.2fs" % (end - start))
     print(">>> source only <<<")
-    rmse,mae,mape,mase = eval_tgt_mlp(src_encoder, src_regressor, tgt_data_loader_eval,y_train)
+    rmse,mae,mape,mase = eval_tgt_mlp(src_encoder, src_regressor, tgt_data_loader_eval,None)
     print(">>> domain adaption <<<")
-    t_rmse,t_mae,t_mape,t_mase = eval_tgt_mlp(tgt_encoder, src_regressor, tgt_data_loader_eval,y_train)
+    t_rmse,t_mae,t_mape,t_mase = eval_tgt_mlp(tgt_encoder, src_regressor, tgt_data_loader_eval,None)
     
     return {data["col"]:{"mae_src":mae,"rmse_src":rmse,"mase_src":mase,"mae_tar":t_mae,"rmse_tar":t_rmse,"mase_tar":t_mase}}

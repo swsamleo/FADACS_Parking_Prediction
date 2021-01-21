@@ -1,3 +1,10 @@
+# @Time     : Jul. 10, 2020 19:45
+# @Author   : Zhen Zhang
+# @Email    : david.zhen.zhang@gmail.com
+# @FileName : ParkingEventConvertor.py
+# @Version  : 1.0
+# @IDE      : VSCode
+
 import DatasetConvertor
 import pandas as pd
 import numpy as np

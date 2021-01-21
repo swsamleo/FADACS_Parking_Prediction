@@ -1,3 +1,10 @@
+# @Time     : Jul. 10, 2020 19:45
+# @Author   : Shiyu Wang, Dora
+# @Email    : brucewsy0204@gmail.com
+# @FileName : 
+# @Version  : 1.0
+# @IDE      : VSCode
+
 import os
 import numpy as np
 import math

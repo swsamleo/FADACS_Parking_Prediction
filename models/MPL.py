@@ -1,3 +1,10 @@
+# @Time     : Jul. 10, 2020 19:45
+# @Author   : Sichen Zhao, Shiyu Wang 
+# @Email    : sichen.zhao@rmit.edu.au
+# @FileName : 
+# @Version  : 1.0
+# @IDE      : VSCode
+
 import pandas as pd
 import numpy as np
 import math

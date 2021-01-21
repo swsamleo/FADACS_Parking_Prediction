@@ -1,3 +1,10 @@
+# @Time     : Jul. 10, 2020 19:45
+# @Author   : Zhen Zhang
+# @Email    : david.zhen.zhang@gmail.com
+# @FileName : Trier.py
+# @Version  : 1.0
+# @IDE      : VSCode
+
 from models import LightGBM as lgbm
 from models import FNN as fnn
 from models import LSTM as lstm
@@ -719,7 +726,7 @@ class Experiment:
         for para in combinations:
             self.add(
             {
-                "model": "ADDA",
+                "model": "FADACS",
                 "source": "MelbCity",
                 "target": "Mornington",
                 "trainWithParkingData":False,
@@ -799,7 +806,7 @@ class Experiment:
             modelParas["parameters"]["featureSize"] = int(self.config["baseUnit"]) * ((1 if trainWithParkingData else 0) + len(self.config["features"]))
             logger.warning("runTFModel Correct featureSize:{}".format(modelParas["parameters"]["featureSize"]))
      
-        # For ADDA
+        # For FADACS / ADDA
         if "e_input_dims" in modelParas["parameters"] and int(modelParas["parameters"]["e_input_dims"]) != int(self.config["baseUnit"]) * (1 + len(self.config["features"])):
             logger.info("e_input_dims:{} baseUnit:{}".format(modelParas["parameters"]["e_input_dims"],self.config["baseUnit"]))
             modelParas["parameters"]["e_input_dims"] = int(self.config["baseUnit"]) * ((1 if trainWithParkingData else 0) + len(self.config["features"]))
@@ -867,7 +874,7 @@ class Experiment:
             if "convLSTM" == experiment["model"]: self.runModel("convLSTM",convlstm,1,uuid,reTrain,Test)
             if "LSTM" == experiment["model"]: self.runModel("LSTM",lstm,1,uuid,reTrain,Test)
             if "DANN" == experiment["model"]: self.runTFModel("DANN",dann,1,uuid,reTrain)
-            if "ADDA" == experiment["model"]: self.runTFModel("ADDA",adda,1,uuid,reTrain)
+            if "FADACS" == experiment["model"]: self.runTFModel("FADACS",adda,1,uuid,reTrain)
             if "HA" == experiment["model"]: self.runHA(uuid,3,reTrain)
             if "ARIMA" == experiment["model"]: self.runARMIA(uuid,reTrain)
             
