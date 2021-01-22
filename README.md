@@ -71,6 +71,10 @@ Or conduct experiments as you wish
     python run_experiment_example.py
     ```
 
+## Updates
+**Jan. 22, 2021**: 
+* All dataset of Mornington(Rye) has been removed.
+
 ## Citation
 Please refer to our paper. Wei Shao*, Sichen Zhao*, Zhen Zhang, Shiyu Wang , Saiedur Rahaman, Andy Song , Flora D Salim. FADACS: A Few-shot Adversarial Domain Adaptation Architecture for Context-Aware Parking Availability Sensing. In *2021 IEEE International Conference on Pervasive Computing and Communications (PerCom) - IEEE International Conference on Pervasive Computing and Communications 2021
 
