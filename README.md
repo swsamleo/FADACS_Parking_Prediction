@@ -78,37 +78,11 @@ Or conduct experiments as you wish
 ## Citation
 Please refer to our paper. Wei Shao*, Sichen Zhao*, Zhen Zhang, Shiyu Wang , Saiedur Rahaman, Andy Song , Flora D Salim. FADACS: A Few-shot Adversarial Domain Adaptation Architecture for Context-Aware Parking Availability Sensing. In *2021 IEEE International Conference on Pervasive Computing and Communications (PerCom) - IEEE International Conference on Pervasive Computing and Communications 2021
 
-    @INPROCEEDINGS{Shao2103:FADACS,
-    AUTHOR="Wei Shao and Sichen Zhao and Zhen Zhang and Shiyu Wang and Mohammad
-    {Saiedur Rahaman} and Andy Song and Flora D Salim",
-    TITLE="{FADACS:} A Few-shot Adversarial Domain Adaptation Architecture for
-    {Context-Aware} Parking Availability Sensing",
-    BOOKTITLE="2021 IEEE International Conference on Pervasive Computing and
-    Communications (PerCom) (PerCom 2021)",
-    ADDRESS="Kassel, Germany",
-    DAYS=21,
-    MONTH=mar,
-    YEAR=2021,
-    ABSTRACT="The existing research on parking availability sensing mainly relies on
-    extensive contextual and historical information. In practice, it is
-    challenging to have such information available as it requires continuous
-    collection of sensory signals. In this paper, we design an end-to-end
-    transfer learning framework for parking availability sensing to predict the
-    parking occupancy in areas where the parking data is insufficient to feed
-    into data-hungry models. This framework overcomes two main challenges: 1)
-    many real-world cases cannot provide enough data for most existing
-    data-driven models. 2) it is difficult to merge sensor data and
-    heterogeneous contextual information due to the differing urban fabric and
-    spatial characteristics. Our work adopts a widely-used concept called
-    adversarial domain adaptation to predict the parking occupancy in an area
-    without abundant sensor data by leveraging data from other areas with
-    similar features. In this paper, we utilise more than 35 million parking
-    data records from sensors placed in two different cities, one is a city
-    centre, and another one is a coastal tourist town. We also utilise
-    heterogeneous spatio-temporal contextual information from external
-    resources including weather and point of interests. We quantify the
-    strength of our proposed framework in different cases and compare it to the
-    existing data-driven approaches. The results show that the proposed
-    framework outperforms existing methods and also provide a few valuable
-    insights for parking availability prediction."
-    }
+@inproceedings{shao2021fadacs,
+  title={FADACS: A Few-Shot Adversarial Domain Adaptation Architecture for Context-Aware Parking Availability Sensing},
+  author={Shao, Wei and Zhao, Sichen and Zhang, Zhen and Wang, Shiyu and Rahaman, Mohammad Saiedur and Song, Andy and Salim, Flora D},
+  booktitle={2021 IEEE International Conference on Pervasive Computing and Communications (PerCom)},
+  pages={1--10},
+  year={2021},
+  organization={IEEE}
+}
