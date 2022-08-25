@@ -4,7 +4,7 @@
 ## Introduction
 Parking availability sensing plays a vital role in urban planning and city management [24,37]. According to a recent study, drivers spend more than 100,000 hours per year in looking for parking their cars [27]. Moreover, seeking for available parking can lead to severe traffic congestion and air pollution [9]. Hence, effective parking availability sensing can help drivers find a vacant parking spot. This also helps government to take appropriate measure by understanding the utilisation of parking facilities and provide more on-street parking lot in the areas with high parking demand
 
-## ADACS ARCHITECTURE
+## FADACS ARCHITECTURE
 <p align="center"><img width="100%" height="100%" src="images/f3.png"></p>
 
 Next step is an adversarial adaptation, which is to learn a target encoder Mt(Xt)so that the discriminator D cannot distinguish the origin of that sample. By fixing source encoder parameter, the adversarial loss is used to minimise the distance of the mapping between source and target domain:Ms(Xs)and Mt(Xt) and maximise the discriminator loss.
